@@ -96,6 +96,14 @@ impl SpellChecker {
         self.suppressed_words.remove(&normalized)
     }
 
+    pub fn replace_ignored_words<I>(&mut self, words: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        self.suppressed_words.clear();
+        self.add_ignored_words(words);
+    }
+
     fn should_suppress_unknown(
         &self,
         token: &ExtractedToken,
@@ -150,11 +158,7 @@ fn read_dictionary_text(path: &Path) -> Result<String, CheckerError> {
 }
 
 fn load_suppressed_words(dict_dir: &Path) -> Result<HashSet<String>, CheckerError> {
-    let from_env = std::env::var("ORTOBOT_SUPPRESSIONS_PATH")
-        .ok()
-        .map(std::path::PathBuf::from);
-    let default_path = dict_dir.join("suppressions.txt");
-    let path = from_env.unwrap_or(default_path);
+    let path = suppressions_path(dict_dir);
 
     if !path.exists() {
         return Ok(HashSet::new());
@@ -167,6 +171,14 @@ fn load_suppressed_words(dict_dir: &Path) -> Result<HashSet<String>, CheckerErro
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| line.to_lowercase())
         .collect())
+}
+
+pub fn suppressions_path(dict_dir: &Path) -> std::path::PathBuf {
+    let from_env = std::env::var("ORTOBOT_SUPPRESSIONS_PATH")
+        .ok()
+        .map(std::path::PathBuf::from);
+    let default_path = dict_dir.join("suppressions.txt");
+    from_env.unwrap_or(default_path)
 }
 
 pub fn normalize_ignored_word(word: &str) -> String {

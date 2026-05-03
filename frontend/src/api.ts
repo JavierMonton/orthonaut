@@ -1,4 +1,10 @@
-import type { ArticleResult, CheckResponse, IgnoredWordsResponse, SandboxCheckResponse } from './types'
+import type {
+  ArticleResult,
+  CheckResponse,
+  ExportIgnoredWordsResponse,
+  IgnoredWordsResponse,
+  SandboxCheckResponse,
+} from './types'
 
 export async function getResults(): Promise<ArticleResult[]> {
   const response = await fetch('/api/results')
@@ -17,6 +23,19 @@ export async function checkUrl(url: string): Promise<CheckResponse> {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to check URL')
+  }
+  return response.json()
+}
+
+export async function checkRandomPage(): Promise<CheckResponse> {
+  const response = await fetch('/api/check/random', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to check random page')
   }
   return response.json()
 }
@@ -73,4 +92,15 @@ export async function deleteIgnoredWord(word: string): Promise<void> {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to remove ignored word')
   }
+}
+
+export async function exportIgnoredWords(): Promise<ExportIgnoredWordsResponse> {
+  const response = await fetch('/api/ignored-words/export', {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to export ignored words')
+  }
+  return response.json()
 }

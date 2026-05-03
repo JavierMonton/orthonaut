@@ -23,3 +23,8 @@ export type SandboxCheckResponse = {
 export type IgnoredWordsResponse = {
   words: string[]
 }
+
+export type ExportIgnoredWordsResponse = {
+  exported_count: number
+  path: string
+}

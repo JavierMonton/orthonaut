@@ -30,18 +30,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
     let ignored_words = db::list_ignored_words(&db_path)?;
     checker.add_ignored_words(ignored_words);
+    let suppressions_path = checker::suppressions_path(&dictionary_dir)
+        .to_string_lossy()
+        .to_string();
 
     let state = api::AppState {
         db_path: Arc::new(db_path),
+        suppressions_path: Arc::new(suppressions_path),
         http_client: reqwest::Client::new(),
         checker: Arc::new(Mutex::new(checker)),
     };
 
     let app = Router::new()
         .route("/api/check", post(api::check_url))
+        .route("/api/check/random", post(api::check_random_page))
         .route("/api/sandbox/check", post(api::sandbox_check))
         .route("/api/ignored-words", get(api::list_ignored_words))
         .route("/api/ignored-words", post(api::add_ignored_word))
+        .route("/api/ignored-words/export", post(api::export_ignored_words))
         .route("/api/ignored-words/:word", delete(api::delete_ignored_word))
         .route("/api/results", get(api::list_results))
         .route("/api/results/:id", delete(api::delete_result))

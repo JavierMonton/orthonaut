@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::{
+    collections::BTreeSet,
+    fs,
+    sync::Arc,
+};
 
 use axum::{
     extract::{Path, State},
@@ -21,6 +25,7 @@ use crate::{
 #[derive(Clone)]
 pub struct AppState {
     pub db_path: Arc<String>,
+    pub suppressions_path: Arc<String>,
     pub http_client: reqwest::Client,
     pub checker: Arc<Mutex<SpellChecker>>,
 }
@@ -40,9 +45,20 @@ pub struct AddIgnoredWordRequest {
     pub word: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CheckRandomRequest {
+    pub language: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct IgnoredWordsResponse {
     pub words: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportIgnoredWordsResponse {
+    pub exported_count: usize,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,50 +96,20 @@ pub async fn check_url(
         return Err(ApiError::BadRequest("url is required".to_string()));
     }
 
-    let (fetch_url, display_url) = normalize_input_url(payload.url.trim())?;
+    run_check_for_url(&state, payload.url.trim()).await.map(Json)
+}
 
-    let page = match wikipedia::fetch_page(&state.http_client, &fetch_url).await {
-        Ok(page) => page,
-        Err(wikipedia::WikipediaError::UpstreamStatus(code))
-            if code == reqwest::StatusCode::FORBIDDEN && fetch_url != display_url =>
-        {
-            // Some upstream edge nodes may reject REST HTML for specific requests.
-            // Retry with the canonical article URL so `/wiki/...` inputs keep working.
-            wikipedia::fetch_page(&state.http_client, &display_url)
-                .await
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?
-        }
-        Err(e) => return Err(ApiError::BadRequest(e.to_string())),
-    };
-
-    let tokens = extractor::extract_tokens(&page.html);
-    let mut checker = state.checker.lock().await;
-    let wrong_words = checker.find_wrong_words_from_tokens(&tokens);
-    drop(checker);
-
-    if wrong_words.is_empty() {
-        return Ok(Json(reporter::ok_message(page.title)));
+pub async fn check_random_page(
+    State(state): State<AppState>,
+    Json(payload): Json<CheckRandomRequest>,
+) -> Result<Json<CheckResponse>, ApiError> {
+    let language = payload.language.as_deref().unwrap_or("es");
+    if language != "es" {
+        return Err(ApiError::BadRequest("only 'es' language is currently supported".to_string()));
     }
 
-    let id = db::insert_article(
-        state.db_path.as_str(),
-        &page.title,
-        &display_url,
-        &page.revision_id,
-        &wrong_words,
-    )
-    .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let result = ArticleResult {
-        id,
-        title: page.title,
-        url: display_url,
-        revision_id: page.revision_id,
-        wrong_words,
-        checked_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    Ok(Json(reporter::errors_found(result)))
+    let random_url = fetch_random_wikipedia_url(&state.http_client, language).await?;
+    run_check_for_url(&state, &random_url).await.map(Json)
 }
 
 pub async fn list_results(State(state): State<AppState>) -> Result<Json<Vec<ArticleResult>>, ApiError> {
@@ -155,6 +141,34 @@ pub async fn add_ignored_word(
     checker.add_ignored_word(&normalized);
     drop(checker);
     Ok(StatusCode::CREATED)
+}
+
+pub async fn export_ignored_words(
+    State(state): State<AppState>,
+) -> Result<Json<ExportIgnoredWordsResponse>, ApiError> {
+    let db_words = db::list_ignored_words(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut merged: BTreeSet<String> = load_existing_suppression_words(state.suppressions_path.as_str())?;
+    merged.extend(db_words);
+    let exported_words: Vec<String> = merged.into_iter().collect();
+
+    let mut file_content = String::from("# Words suppressed by Ortobot.\n");
+    file_content.push_str("# Exported from DB + file merge.\n\n");
+    if !exported_words.is_empty() {
+        file_content.push_str(&exported_words.join("\n"));
+        file_content.push('\n');
+    }
+    fs::write(state.suppressions_path.as_str(), file_content)
+        .map_err(|e| ApiError::Internal(format!("failed to write suppressions file: {e}")))?;
+
+    let mut checker = state.checker.lock().await;
+    checker.replace_ignored_words(exported_words.clone());
+    drop(checker);
+
+    Ok(Json(ExportIgnoredWordsResponse {
+        exported_count: exported_words.len(),
+        path: state.suppressions_path.as_ref().to_string(),
+    }))
 }
 
 pub async fn delete_result(
@@ -247,6 +261,118 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
     Ok((input.to_string(), input.to_string()))
 }
 
+async fn run_check_for_url(state: &AppState, input_url: &str) -> Result<CheckResponse, ApiError> {
+    let (fetch_url, display_url) = normalize_input_url(input_url)?;
+
+    let page = match wikipedia::fetch_page(&state.http_client, &fetch_url).await {
+        Ok(page) => page,
+        Err(wikipedia::WikipediaError::UpstreamStatus(code))
+            if code == reqwest::StatusCode::FORBIDDEN && fetch_url != display_url =>
+        {
+            // Some upstream edge nodes may reject REST HTML for specific requests.
+            // Retry with the canonical article URL so `/wiki/...` inputs keep working.
+            wikipedia::fetch_page(&state.http_client, &display_url)
+                .await
+                .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        }
+        Err(e) => return Err(ApiError::BadRequest(e.to_string())),
+    };
+
+    let tokens = extractor::extract_tokens(&page.html);
+    let mut checker = state.checker.lock().await;
+    let wrong_words = checker.find_wrong_words_from_tokens(&tokens);
+    drop(checker);
+
+    if wrong_words.is_empty() {
+        return Ok(reporter::ok_message(page.title));
+    }
+
+    let id = db::insert_article(
+        state.db_path.as_str(),
+        &page.title,
+        &display_url,
+        &page.revision_id,
+        &wrong_words,
+    )
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let result = ArticleResult {
+        id,
+        title: page.title,
+        url: display_url,
+        revision_id: page.revision_id,
+        wrong_words,
+        checked_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    Ok(reporter::errors_found(result))
+}
+
+#[derive(Debug, Deserialize)]
+struct RandomApiResponse {
+    query: RandomQuery,
+}
+
+#[derive(Debug, Deserialize)]
+struct RandomQuery {
+    random: Vec<RandomPage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RandomPage {
+    title: String,
+}
+
+async fn fetch_random_wikipedia_url(client: &reqwest::Client, language: &str) -> Result<String, ApiError> {
+    let api_url = format!(
+        "https://{language}.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=1"
+    );
+    let response = client
+        .get(api_url)
+        .header(
+            reqwest::header::USER_AGENT,
+            "Ortobot/0.1 (self-hosted spelling checker)",
+        )
+        .header("Api-User-Agent", "Ortobot/0.1 (self-hosted spelling checker)")
+        .send()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("failed to fetch random page: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(ApiError::BadRequest(format!(
+            "random page upstream returned status {}",
+            response.status()
+        )));
+    }
+
+    let payload: RandomApiResponse = response
+        .json()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("invalid random page response: {e}")))?;
+    let page = payload
+        .query
+        .random
+        .into_iter()
+        .next()
+        .ok_or_else(|| ApiError::BadRequest("random page response was empty".to_string()))?;
+    let encoded = page.title.replace(' ', "_");
+    Ok(format!("https://{language}.wikipedia.org/wiki/{encoded}"))
+}
+
+fn load_existing_suppression_words(path: &str) -> Result<BTreeSet<String>, ApiError> {
+    if !std::path::Path::new(path).exists() {
+        return Ok(BTreeSet::new());
+    }
+    let content = fs::read_to_string(path)
+        .map_err(|e| ApiError::Internal(format!("failed to read suppressions file: {e}")))?;
+    Ok(content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(crate::checker::normalize_ignored_word)
+        .collect())
+}
+
 fn build_url(base: &reqwest::Url, path: &str) -> String {
     let mut url = base.clone();
     url.set_path(path);
@@ -311,6 +437,7 @@ mod tests {
 
         AppState {
             db_path: Arc::new(db_path),
+            suppressions_path: Arc::new("dictionaries/suppressions.txt".to_string()),
             http_client: reqwest::Client::new(),
             checker: Arc::new(Mutex::new(checker)),
         }

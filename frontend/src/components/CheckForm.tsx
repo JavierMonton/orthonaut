@@ -6,9 +6,10 @@ type CheckFormProps = {
   loading: boolean
   onUrlChange: (url: string) => void
   onSubmit: () => Promise<void>
+  onAnalyzeRandom: () => Promise<void>
 }
 
-export default function CheckForm({ url, loading, onUrlChange, onSubmit }: CheckFormProps) {
+export default function CheckForm({ url, loading, onUrlChange, onSubmit, onAnalyzeRandom }: CheckFormProps) {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     await onSubmit()
@@ -26,13 +27,23 @@ export default function CheckForm({ url, loading, onUrlChange, onSubmit }: Check
           disabled={loading}
           required
         />
-        <Button
-          type="submit"
-          disabled={loading}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Start
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="submit"
+            disabled={loading}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Start
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void onAnalyzeRandom()}
+            disabled={loading}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Analyze random page
+          </Button>
+        </div>
       </div>
     </form>
   )

@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { addIgnoredWord, checkUrl, deleteResult, getIgnoredWords, getResults, sandboxCheck } from './api'
+import {
+  addIgnoredWord,
+  checkRandomPage,
+  checkUrl,
+  deleteResult,
+  exportIgnoredWords,
+  getIgnoredWords,
+  getResults,
+  sandboxCheck,
+} from './api'
 import CheckForm from './components/CheckForm'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultRow from './components/ResultRow'
@@ -38,25 +47,44 @@ function App() {
     [sandboxResult, ignoredWordsSet],
   )
 
+  const applyCheckResponse = (response: { status: 'ok' | 'errors'; result: ArticleResult | null; message: string | null }) => {
+    if (response.status === 'errors' && response.result) {
+      const result = response.result
+      const visibleWrongWords = result.wrong_words.filter((word) => !ignoredWordsSet.has(word))
+      if (visibleWrongWords.length === 0) {
+        setSuccess(response.message ?? `No se encontraron errores claros en ${result.title}`)
+      } else {
+        setResults((prev) => [{ ...result, wrong_words: visibleWrongWords }, ...prev])
+      }
+    } else if (response.status === 'ok') {
+      setSuccess(response.message ?? 'No se encontraron errores')
+    }
+  }
+
   const handleSubmit = async () => {
     setLoading(true)
     setError(null)
     setSuccess(null)
     try {
       const response = await checkUrl(url.trim())
-      if (response.status === 'errors' && response.result) {
-        const visibleWrongWords = response.result.wrong_words.filter((word) => !ignoredWordsSet.has(word))
-        if (visibleWrongWords.length === 0) {
-          setSuccess(response.message ?? `No se encontraron errores claros en ${response.result.title}`)
-        } else {
-          setResults((prev) => [{ ...response.result!, wrong_words: visibleWrongWords }, ...prev])
-        }
-      } else if (response.status === 'ok') {
-        setSuccess(response.message ?? 'No se encontraron errores')
-      }
+      applyCheckResponse(response)
       setUrl('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Check request failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRandomSubmit = async () => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const response = await checkRandomPage()
+      applyCheckResponse(response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Random check request failed')
     } finally {
       setLoading(false)
     }
@@ -129,6 +157,20 @@ function App() {
     }
   }
 
+  const handleExportIgnoredWords = async () => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const response = await exportIgnoredWords()
+      setSuccess(`Exported ${response.exported_count} ignored words to ${response.path}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export ignored words')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl p-4 sm:p-6">
       {loading && <LoadingSpinner label="Checking article orthography..." />}
@@ -169,7 +211,23 @@ function App() {
       {section === 'checker' ? (
         <>
           <section className="mb-4">
-            <CheckForm url={url} loading={loading} onUrlChange={setUrl} onSubmit={handleSubmit} />
+            <CheckForm
+              url={url}
+              loading={loading}
+              onUrlChange={setUrl}
+              onSubmit={handleSubmit}
+              onAnalyzeRandom={handleRandomSubmit}
+            />
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => void handleExportIgnoredWords()}
+                disabled={loading}
+                className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Export ignored words to file
+              </button>
+            </div>
           </section>
 
           {error && (
