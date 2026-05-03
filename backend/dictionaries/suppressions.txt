@@ -5,6 +5,7 @@ académicamente
 aeróbica
 aeróbico
 afrodescendientes
+amateur
 anaeróbica
 anatonum
 angloperuano
@@ -15,13 +16,17 @@ aprovisionándolas
 arjé
 bielorrusas
 bielorruso
+biprovincial
 blanc
 blanquiazul
+bonificación
+bonus
 britannica
 cabarets
 cacana
 calamianensis
 caldarium
+cantautor
 caos
 castellanización
 charlestón
@@ -35,9 +40,11 @@ concéntricas
 constructo
 contradictoriamente
 cooficialmente
+coruñeses
 cupletista
 cápita
 cíborg
+desarrolladores
 destitución
 desvertebración
 discotequero
@@ -49,6 +56,7 @@ enmarcamiento
 estoniorusa
 estratificación
 estroboscópica
+exequipo
 exjugador
 expresidente
 fazil
@@ -57,9 +65,11 @@ flex
 flexquote
 freguesía
 futbolísticamente
+futbolístico
 fálica
 führer
 globalización
+goleador
 guardameta
 herreriana
 heterochroma
@@ -83,6 +93,7 @@ malaguista
 margin
 medallista
 medallones
+mediocentro
 merlau
 miniaturizaciones
 miniserie
@@ -105,7 +116,9 @@ presumiblemente
 presídium
 pretemporada
 prolífera
+pueblecito
 quote
+quíntuple
 ranking
 rectoría
 relevos
@@ -132,10 +145,12 @@ superhumana
 superhéroes
 supervillanos
 surcoreano
+séxtuple
 tajantemente
 telemáticas
 teleserie
 todoterreno
+uniprovincial
 url
 versionada
 videojuego
@@ -145,6 +160,7 @@ watch
 width
 wikidata
 youtube
+órficos
 πλήρωμα
 بیات
 ساره
