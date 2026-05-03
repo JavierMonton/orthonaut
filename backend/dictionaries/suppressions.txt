@@ -1,0 +1,13 @@
+# Domain-specific suppressions to reduce false positives.
+# One lowercased token per line.
+fazil
+mustafá
+köprülü
+pasha
+visir
+ottoman
+otomano
+wikidata
+url
+britannica
+slankamen

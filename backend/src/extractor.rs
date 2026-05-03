@@ -1,0 +1,173 @@
+use regex::Regex;
+use scraper::{ElementRef, Html, Selector};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractedToken {
+    pub normalized: String,
+    pub saw_uppercase: bool,
+}
+
+pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
+    let document = Html::parse_document(html);
+
+    // Rendered Wikipedia HTML wraps article content in #mw-content-text.
+    let rendered_selector = Selector::parse("#mw-content-text p").expect("valid rendered selector");
+
+    // Parsoid HTML (returned by the Wikipedia REST API) places content in <section>
+    // elements directly inside <body>, with no #mw-content-text wrapper at all.
+    let parsoid_selector = Selector::parse("body section p, body p").expect("valid parsoid selector");
+
+    let mut nodes: Vec<_> = document.select(&rendered_selector).collect();
+    if nodes.is_empty() {
+        nodes = document.select(&parsoid_selector).collect();
+    }
+
+    let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
+
+    let mut tokens = Vec::new();
+
+    for node in nodes {
+        if should_skip_node(&node) {
+            continue;
+        }
+        let text = node.text().collect::<Vec<_>>().join(" ");
+        for raw in splitter.split(&text) {
+            if let Some(token) = normalize_token(raw) {
+                if should_skip(&token) {
+                    continue;
+                }
+                tokens.push(token);
+            } else {
+                continue;
+            }
+        }
+    }
+
+    tokens
+}
+
+pub fn extract_tokens_from_input(input: &str) -> Vec<ExtractedToken> {
+    if looks_like_html(input) {
+        return extract_tokens(input);
+    }
+    extract_tokens_from_text(input)
+}
+
+fn extract_tokens_from_text(text: &str) -> Vec<ExtractedToken> {
+    let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
+    splitter
+        .split(text)
+        .map(normalize_token)
+        .flatten()
+        .filter(|token| !should_skip(token))
+        .collect()
+}
+
+fn looks_like_html(input: &str) -> bool {
+    let lower = input.to_ascii_lowercase();
+    lower.contains("<html")
+        || lower.contains("<body")
+        || lower.contains("<p")
+        || lower.contains("<div")
+        || lower.contains("</")
+}
+
+fn normalize_token(token: &str) -> Option<ExtractedToken> {
+    let trimmed = token.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '-');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(ExtractedToken {
+        normalized: trimmed.to_lowercase(),
+        saw_uppercase: trimmed.chars().any(|c| c.is_uppercase()),
+    })
+}
+
+fn should_skip(token: &ExtractedToken) -> bool {
+    if token.normalized.len() < 2 {
+        return true;
+    }
+    if token.normalized.chars().any(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    if token.normalized == "url" {
+        return true;
+    }
+    if token.normalized.contains("http") || token.normalized.contains("www") {
+        return true;
+    }
+    if token.normalized.contains('\'') || token.normalized.contains('-') {
+        return true;
+    }
+    false
+}
+
+fn should_skip_node(node: &ElementRef<'_>) -> bool {
+    const EXCLUDED_CLASSES: &[&str] = &[
+        "reflist",
+        "references",
+        "mw-references-wrap",
+        "infobox",
+        "navbox",
+        "metadata",
+        "catlinks",
+        "toc",
+        "mw-editsection",
+        "coordinates",
+        "authority-control",
+        "mw-footer",
+    ];
+
+    const EXCLUDED_IDS: &[&str] = &["toc", "catlinks", "footer", "mw-navigation"];
+
+    for ancestor in node.ancestors().filter_map(ElementRef::wrap) {
+        if let Some(id) = ancestor.value().id() {
+            if EXCLUDED_IDS.contains(&id) {
+                return true;
+            }
+        }
+
+        for class_name in ancestor.value().classes() {
+            if EXCLUDED_CLASSES.contains(&class_name) {
+                return true;
+            }
+        }
+
+        if let Some(role) = ancestor.value().attr("role") {
+            if role == "navigation" || role == "note" {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_tokens_from_input;
+
+    #[test]
+    fn ignores_reference_and_navigation_content() {
+        let html = r#"
+        <html>
+          <body>
+            <div id="mw-content-text">
+              <p>Fazil Mustafá fue visir otomano.</p>
+              <div class="reflist"><p>the url and reference words</p></div>
+              <div class="navbox"><p>navigation footer content</p></div>
+            </div>
+          </body>
+        </html>
+        "#;
+
+        let tokens = extract_tokens_from_input(html);
+        let words: Vec<String> = tokens.into_iter().map(|token| token.normalized).collect();
+        assert!(words.contains(&"fazil".to_string()));
+        assert!(words.contains(&"mustafá".to_string()));
+        assert!(!words.contains(&"the".to_string()));
+        assert!(!words.contains(&"url".to_string()));
+        assert!(!words.contains(&"navigation".to_string()));
+    }
+}
