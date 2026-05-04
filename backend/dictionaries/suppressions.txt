@@ -2,9 +2,11 @@
 # Exported from DB + file merge.
 
 académicamente
+acrónimo
 aeróbica
 aeróbico
 afrodescendientes
+almosna
 amateur
 anaeróbica
 anatonum
@@ -14,11 +16,14 @@ antiotomana
 antológica
 aprovisionándolas
 arjé
+autoría
+banjo
 bielorrusas
 bielorruso
 biprovincial
 blanc
 blanquiazul
+bloguera
 bonificación
 bonus
 britannica
@@ -35,6 +40,7 @@ clubs
 coeducación
 colombard
 column
+compilatorio
 concretamente
 concéntricas
 constructo
@@ -44,6 +50,7 @@ coruñeses
 cupletista
 cápita
 cíborg
+decagonal
 desarrolladores
 destitución
 desvertebración
@@ -63,11 +70,14 @@ fazil
 finlandés
 flex
 flexquote
+forintos
+franquismo
 freguesía
 futbolísticamente
 futbolístico
 fálica
 führer
+gestoría
 globalización
 goleador
 guardameta
@@ -88,7 +98,9 @@ keniana
 kinesiológico
 köprülü
 liguera
+linternillas
 little
+longicornios
 malaguista
 margin
 medallista
@@ -99,8 +111,10 @@ miniaturizaciones
 miniserie
 mustafá
 médicamente
+neogótico
 nominación
 opone
+ornitología
 otomano
 ottoman
 padding
@@ -116,12 +130,15 @@ presumiblemente
 presídium
 pretemporada
 prolífera
+promocional
 pueblecito
 quote
 quíntuple
 ranking
+recopilatorio
 rectoría
 relevos
+reses
 reubicar
 right
 robótica
@@ -147,8 +164,10 @@ supervillanos
 surcoreano
 séxtuple
 tajantemente
+teclista
 telemáticas
 teleserie
+think
 todoterreno
 uniprovincial
 url
@@ -160,6 +179,8 @@ watch
 width
 wikidata
 youtube
+ábside
+ábsides
 órficos
 πλήρωμα
 بیات

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
 
 use axum::{routing::{delete, get, post}, Router};
 use tokio::sync::Mutex;
@@ -7,6 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
 mod checker;
+mod config;
 mod db;
 mod extractor;
 mod reporter;
@@ -34,11 +35,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
+    let config_path = std::env::var("ORTOBOT_CONFIG_PATH").unwrap_or_else(|_| "ortobot.toml".to_string());
+    let config_path = Path::new(&config_path);
+    let app_config = config::OrtobotConfig::load(config_path)?;
+    tracing::info!(
+        path = %app_config.path.display(),
+        "loaded Ortobot config"
+    );
+
     let state = api::AppState {
         db_path: Arc::new(db_path),
         suppressions_path: Arc::new(suppressions_path),
         http_client: reqwest::Client::new(),
         checker: Arc::new(Mutex::new(checker)),
+        wikimedia_contact: Arc::new(app_config.wikimedia_contact),
     };
 
     let app = Router::new()

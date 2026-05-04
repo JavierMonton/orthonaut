@@ -1,0 +1,5 @@
+# Ortobot runtime configuration (see ORTOBOT_CONFIG_PATH; default: ortobot.toml next to cwd).
+
+# Wikimedia User-Agent / Api-User-Agent policy contact — URL, email, or wiki user form per:
+# https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
+wikimedia_contact = "wikipedia:es; User:Jmlarraz"

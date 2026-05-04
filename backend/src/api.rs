@@ -28,6 +28,7 @@ pub struct AppState {
     pub suppressions_path: Arc<String>,
     pub http_client: reqwest::Client,
     pub checker: Arc<Mutex<SpellChecker>>,
+    pub wikimedia_contact: Arc<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,7 +109,12 @@ pub async fn check_random_page(
         return Err(ApiError::BadRequest("only 'es' language is currently supported".to_string()));
     }
 
-    let random_url = fetch_random_wikipedia_url(&state.http_client, language).await?;
+    let random_url = fetch_random_wikipedia_url(
+        &state.http_client,
+        language,
+        state.wikimedia_contact.as_str(),
+    )
+    .await?;
     run_check_for_url(&state, &random_url).await.map(Json)
 }
 
@@ -264,14 +270,15 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
 async fn run_check_for_url(state: &AppState, input_url: &str) -> Result<CheckResponse, ApiError> {
     let (fetch_url, display_url) = normalize_input_url(input_url)?;
 
-    let page = match wikipedia::fetch_page(&state.http_client, &fetch_url).await {
+    let contact = state.wikimedia_contact.as_str();
+    let page = match wikipedia::fetch_page(&state.http_client, &fetch_url, contact).await {
         Ok(page) => page,
         Err(wikipedia::WikipediaError::UpstreamStatus(code))
             if code == reqwest::StatusCode::FORBIDDEN && fetch_url != display_url =>
         {
             // Some upstream edge nodes may reject REST HTML for specific requests.
             // Retry with the canonical article URL so `/wiki/...` inputs keep working.
-            wikipedia::fetch_page(&state.http_client, &display_url)
+            wikipedia::fetch_page(&state.http_client, &display_url, contact)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?
         }
@@ -323,17 +330,15 @@ struct RandomPage {
     title: String,
 }
 
-async fn fetch_random_wikipedia_url(client: &reqwest::Client, language: &str) -> Result<String, ApiError> {
+async fn fetch_random_wikipedia_url(
+    client: &reqwest::Client,
+    language: &str,
+    wikimedia_contact: &str,
+) -> Result<String, ApiError> {
     let api_url = format!(
         "https://{language}.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=1"
     );
-    let response = client
-        .get(api_url)
-        .header(
-            reqwest::header::USER_AGENT,
-            "Ortobot/0.1 (self-hosted spelling checker)",
-        )
-        .header("Api-User-Agent", "Ortobot/0.1 (self-hosted spelling checker)")
+    let response = wikipedia::wikimedia_identified(client.get(api_url), wikimedia_contact)
         .send()
         .await
         .map_err(|e| ApiError::BadRequest(format!("failed to fetch random page: {e}")))?;
@@ -440,6 +445,7 @@ mod tests {
             suppressions_path: Arc::new("dictionaries/suppressions.txt".to_string()),
             http_client: reqwest::Client::new(),
             checker: Arc::new(Mutex::new(checker)),
+            wikimedia_contact: Arc::new("wikipedia:es; User:Test".to_string()),
         }
     }
 

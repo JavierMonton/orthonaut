@@ -1,6 +1,26 @@
 use reqwest::Client;
 use scraper::{Html, Selector};
 
+/// Identifies Ortobot per [WMF User-Agent policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
+/// `wikimedia_contact` comes from [`crate::config::OrtobotConfig`] (`wikimedia_contact` in `ortobot.toml`).
+pub fn wikimedia_http_user_agent(wikimedia_contact: &str) -> String {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+    format!(
+        "OrtobotBot/{VERSION} ({wikimedia_contact}; Wikipedia Spanish orthography checker) ortobot-backend/{VERSION} reqwest/0.12"
+    )
+}
+
+pub fn wikimedia_identified(
+    builder: reqwest::RequestBuilder,
+    wikimedia_contact: &str,
+) -> reqwest::RequestBuilder {
+    let ua = wikimedia_http_user_agent(wikimedia_contact);
+    builder
+        .header(reqwest::header::USER_AGENT, ua.as_str())
+        .header(reqwest::header::HeaderName::from_static("api-user-agent"), ua)
+}
+
 #[derive(Debug, Clone)]
 pub struct WikipediaPage {
     pub title: String,
@@ -16,15 +36,17 @@ pub enum WikipediaError {
     UpstreamStatus(reqwest::StatusCode),
 }
 
-pub async fn fetch_page(client: &Client, url: &str) -> Result<WikipediaPage, WikipediaError> {
-    let response = client
-        .get(url)
-        .header(
-            reqwest::header::USER_AGENT,
-            "Ortobot/0.1 (self-hosted spelling checker)",
-        )
-        .header("Api-User-Agent", "Ortobot/0.1 (self-hosted spelling checker)")
-        .header(reqwest::header::ACCEPT, "text/html")
+pub async fn fetch_page(
+    client: &Client,
+    url: &str,
+    wikimedia_contact: &str,
+) -> Result<WikipediaPage, WikipediaError> {
+    let response = wikimedia_identified(
+        client
+            .get(url)
+            .header(reqwest::header::ACCEPT, "text/html"),
+        wikimedia_contact,
+    )
         .send()
         .await?;
     let status = response.status();
