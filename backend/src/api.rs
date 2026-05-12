@@ -338,10 +338,14 @@ async fn fetch_random_wikipedia_url(
     let api_url = format!(
         "https://{language}.wikipedia.org/w/api.php?action=query&format=json&list=random&rnnamespace=0&rnlimit=1"
     );
-    let response = wikipedia::wikimedia_identified(client.get(api_url), wikimedia_contact)
-        .send()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("failed to fetch random page: {e}")))?;
+    let response = wikipedia::wikimedia_send(
+        client
+            .get(api_url)
+            .header(reqwest::header::ACCEPT, "application/json"),
+        wikimedia_contact,
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("failed to fetch random page: {e}")))?;
 
     if !response.status().is_success() {
         return Err(ApiError::BadRequest(format!(
