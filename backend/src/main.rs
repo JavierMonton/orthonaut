@@ -43,10 +43,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "loaded Ortobot config"
     );
 
+    let wikimedia_ua = wikipedia::wikimedia_http_user_agent(&app_config.wikimedia_contact);
+    tracing::info!(user_agent = %wikimedia_ua, "Wikimedia User-Agent");
+    let http_client = reqwest::Client::builder()
+        .user_agent(&wikimedia_ua)
+        .build()?;
+
     let state = api::AppState {
         db_path: Arc::new(db_path),
         suppressions_path: Arc::new(suppressions_path),
-        http_client: reqwest::Client::new(),
+        http_client,
         checker: Arc::new(Mutex::new(checker)),
         wikimedia_contact: Arc::new(app_config.wikimedia_contact),
     };
