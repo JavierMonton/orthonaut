@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 
@@ -5,6 +7,7 @@ use scraper::{ElementRef, Html, Selector};
 pub struct ExtractedToken {
     pub normalized: String,
     pub saw_uppercase: bool,
+    pub is_link: bool,
 }
 
 pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
@@ -23,6 +26,25 @@ pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
     }
 
     let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
+    let a_selector = Selector::parse("a").expect("valid a selector");
+
+    // Collect all words that appear as anchor text within article content.
+    let mut link_words: HashSet<String> = HashSet::new();
+    for node in &nodes {
+        if should_skip_node(node) {
+            continue;
+        }
+        for link in node.select(&a_selector) {
+            let text = link.text().collect::<String>();
+            for raw in splitter.split(&text) {
+                if let Some(token) = normalize_token(raw) {
+                    if !should_skip(&token) {
+                        link_words.insert(token.normalized);
+                    }
+                }
+            }
+        }
+    }
 
     let mut tokens = Vec::new();
 
@@ -32,13 +54,12 @@ pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
         }
         let text = node.text().collect::<Vec<_>>().join(" ");
         for raw in splitter.split(&text) {
-            if let Some(token) = normalize_token(raw) {
+            if let Some(mut token) = normalize_token(raw) {
                 if should_skip(&token) {
                     continue;
                 }
+                token.is_link = link_words.contains(&token.normalized);
                 tokens.push(token);
-            } else {
-                continue;
             }
         }
     }
@@ -81,6 +102,7 @@ fn normalize_token(token: &str) -> Option<ExtractedToken> {
     Some(ExtractedToken {
         normalized: trimmed.to_lowercase(),
         saw_uppercase: trimmed.chars().any(|c| c.is_uppercase()),
+        is_link: false,
     })
 }
 
@@ -147,6 +169,26 @@ fn should_skip_node(node: &ElementRef<'_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::extract_tokens_from_input;
+
+    #[test]
+    fn marks_anchor_text_words_as_links() {
+        let html = r#"
+        <html>
+          <body>
+            <div id="mw-content-text">
+              <p>Hablan <a href="/wiki/Cebuano">cebuano</a> en esa región.</p>
+              <p>También hay hablantes de tagalo fuera de la región.</p>
+            </div>
+          </body>
+        </html>
+        "#;
+
+        let tokens = extract_tokens_from_input(html);
+        let cebuano = tokens.iter().find(|t| t.normalized == "cebuano");
+        let tagalo = tokens.iter().find(|t| t.normalized == "tagalo");
+        assert!(cebuano.is_some_and(|t| t.is_link), "cebuano should be marked as a link");
+        assert!(tagalo.is_some_and(|t| !t.is_link), "tagalo should not be marked as a link");
+    }
 
     #[test]
     fn ignores_reference_and_navigation_content() {

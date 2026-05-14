@@ -476,6 +476,7 @@ mod tests {
             let before_delete = checker.find_wrong_words_from_tokens(&[ExtractedToken {
                 normalized: "palabrafalsa".to_string(),
                 saw_uppercase: false,
+                is_link: false,
             }]);
             assert!(!before_delete.contains(&"palabrafalsa".to_string()));
         }
@@ -493,6 +494,7 @@ mod tests {
             let after_delete = checker.find_wrong_words_from_tokens(&[ExtractedToken {
                 normalized: "palabrafalsa".to_string(),
                 saw_uppercase: false,
+                is_link: false,
             }]);
             assert!(after_delete.contains(&"palabrafalsa".to_string()));
         }

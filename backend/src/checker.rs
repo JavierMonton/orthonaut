@@ -46,6 +46,9 @@ impl SpellChecker {
         let casing_map = build_casing_map(tokens);
 
         for token in tokens {
+            if token.is_link {
+                continue;
+            }
             if self.should_suppress_unknown(token, &casing_map) {
                 continue;
             }
@@ -243,18 +246,22 @@ mod tests {
             ExtractedToken {
                 normalized: "mustafá".to_string(),
                 saw_uppercase: true,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "mustafá".to_string(),
                 saw_uppercase: true,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "imperio".to_string(),
                 saw_uppercase: true,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "imperio".to_string(),
                 saw_uppercase: false,
+                is_link: false,
             },
         ];
 
@@ -282,18 +289,22 @@ mod tests {
             ExtractedToken {
                 normalized: "mustafá".to_string(),
                 saw_uppercase: true,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "mustafá".to_string(),
                 saw_uppercase: true,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "palabraa".to_string(),
                 saw_uppercase: false,
+                is_link: false,
             },
             ExtractedToken {
                 normalized: "url".to_string(),
                 saw_uppercase: false,
+                is_link: false,
             },
         ];
 
@@ -310,6 +321,7 @@ mod tests {
             .map(|idx| ExtractedToken {
                 normalized: format!("palabrafalsa{idx}"),
                 saw_uppercase: false,
+                is_link: false,
             })
             .collect();
 
@@ -337,6 +349,7 @@ mod tests {
         let token = ExtractedToken {
             normalized: "palabrafalsa".to_string(),
             saw_uppercase: false,
+            is_link: false,
         };
 
         let initial = checker.find_wrong_words_from_tokens(std::slice::from_ref(&token));
@@ -349,6 +362,26 @@ mod tests {
         checker.remove_ignored_word("palabrafalsa");
         let after_remove = checker.find_wrong_words_from_tokens(std::slice::from_ref(&token));
         assert!(after_remove.contains(&"palabrafalsa".to_string()));
+    }
+
+    #[test]
+    fn skips_words_marked_as_links() {
+        let mut checker = SpellChecker::new(Path::new("dictionaries")).expect("dictionary available");
+        let tokens = vec![
+            ExtractedToken {
+                normalized: "palabrafalsa".to_string(),
+                saw_uppercase: false,
+                is_link: true,
+            },
+            ExtractedToken {
+                normalized: "otrapalabra".to_string(),
+                saw_uppercase: false,
+                is_link: false,
+            },
+        ];
+        let wrong = checker.find_wrong_words_from_tokens(&tokens);
+        assert!(!wrong.contains(&"palabrafalsa".to_string()), "link word should be suppressed");
+        assert!(wrong.contains(&"otrapalabra".to_string()), "non-link unknown word should be flagged");
     }
 
     #[test]
