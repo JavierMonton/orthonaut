@@ -1,6 +1,7 @@
 # Words suppressed by Wordfixer.
 # Exported from DB + file merge.
 
+absueltos
 académicamente
 acrónimo
 aeróbica
@@ -25,6 +26,7 @@ antiotomana
 antológica
 apresuradamente
 aprovisionándolas
+archidiócesis
 arjé
 arquidiócesis
 artísticamente
@@ -70,6 +72,7 @@ cetosis
 champlevé
 charlestón
 chasselas
+cirrhosus
 cladoicus
 clasificatorios
 clubs
@@ -77,9 +80,11 @@ coanfitriona
 coeducación
 cofinanciación
 cofinanciando
+cofundadora
 colesterolosis
 colombard
 column
+colíder
 comandos
 compilatorio
 concretamente
@@ -99,10 +104,12 @@ coruñeses
 country
 cremado
 criminalizaba
+crossover
 cupletista
 cápita
 cíborg
 decagonal
+defenderla
 dejándole
 deliciosamente
 densamente
@@ -123,6 +130,7 @@ displaystyle
 displicata
 díptico
 ectoparásito
+ejecutoriales
 electrificación
 electrolito
 eléctricamente
@@ -193,6 +201,7 @@ indie
 industrialmente
 infertilidad
 infestación
+infusionan
 infértil
 infértiles
 inicialista
@@ -209,12 +218,14 @@ iónico
 jenízaros
 jugabilidad
 jumillano
+juntarlos
 kantharos
 keniana
 kinesiológico
 kárate
 köprülü
 liguera
+limoncillo
 linternillas
 little
 localmente
@@ -357,6 +368,7 @@ stop
 strip
 subcampeona
 subcampeón
+subgrupos
 subterráneamente
 sucederla
 superfamilia
@@ -395,6 +407,7 @@ url
 versionada
 video
 videojuego
+videos
 vinculatorio
 violatoria
 visir

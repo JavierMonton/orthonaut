@@ -44,6 +44,7 @@ export default function ResultRow({
   oauthConfigured,
 }: ResultRowProps) {
   const [expandedWord, setExpandedWord] = useState<string | null>(null)
+  const [localIgnored, setLocalIgnored] = useState<Set<string>>(new Set())
   const [contextData, setContextData] = useState<Record<string, string[]>>({})
   const [contextIndex, setContextIndex] = useState<Record<string, number>>({})
   const [contextLoading, setContextLoading] = useState<Record<string, boolean>>({})
@@ -99,7 +100,7 @@ export default function ResultRow({
     }
   }
 
-  const visibleWords = result.wrong_words.filter((word) => !ignoredWords.has(word))
+  const visibleWords = result.wrong_words.filter((word) => !ignoredWords.has(word) && !localIgnored.has(word))
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -153,6 +154,13 @@ export default function ResultRow({
                       className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700"
                     >
                       Valid word
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setLocalIgnored((prev) => new Set([...prev, word]))}
+                      className="rounded bg-slate-400 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-500"
+                    >
+                      Ignore
                     </Button>
                   </div>
                 </div>
