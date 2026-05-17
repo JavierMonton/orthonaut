@@ -28,6 +28,13 @@ pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
             word TEXT PRIMARY KEY,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            access_token TEXT NOT NULL,
+            refresh_token TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         "#,
     )?;
     Ok(())
@@ -100,6 +107,78 @@ pub fn delete_article(db_path: &str, id: i64) -> rusqlite::Result<usize> {
     conn.execute("DELETE FROM articles WHERE id = ?1", params![id])
 }
 
+pub fn get_article(db_path: &str, id: i64) -> rusqlite::Result<Option<ArticleRecord>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, page_title, page_url, revision_id, wrong_words, checked_at FROM articles WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        let wrong_words_json: String = row.get(4)?;
+        let wrong_words: Vec<String> = serde_json::from_str(&wrong_words_json).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+        })?;
+        Ok(ArticleRecord {
+            id: row.get(0)?,
+            page_title: row.get(1)?,
+            page_url: row.get(2)?,
+            revision_id: row.get(3)?,
+            wrong_words,
+            checked_at: row.get(5)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
+#[derive(Debug, Clone)]
+pub struct OAuthToken {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: String,
+}
+
+pub fn store_oauth_token(
+    db_path: &str,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    expires_at: &str,
+) -> rusqlite::Result<()> {
+    let conn = Connection::open(db_path)?;
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO oauth_tokens (id, access_token, refresh_token, expires_at, created_at)
+        VALUES (1, ?1, ?2, ?3, ?4)
+        ON CONFLICT(id) DO UPDATE SET
+            access_token = excluded.access_token,
+            refresh_token = excluded.refresh_token,
+            expires_at = excluded.expires_at,
+            created_at = excluded.created_at
+        "#,
+        params![access_token, refresh_token, expires_at, created_at],
+    )?;
+    Ok(())
+}
+
+pub fn get_oauth_token(db_path: &str) -> rusqlite::Result<Option<OAuthToken>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT access_token, refresh_token, expires_at FROM oauth_tokens WHERE id = 1",
+    )?;
+    let mut rows = stmt.query_map([], |row| {
+        Ok(OAuthToken {
+            access_token: row.get(0)?,
+            refresh_token: row.get(1)?,
+            expires_at: row.get(2)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
+pub fn delete_oauth_token(db_path: &str) -> rusqlite::Result<usize> {
+    let conn = Connection::open(db_path)?;
+    conn.execute("DELETE FROM oauth_tokens WHERE id = 1", [])
+}
+
 pub fn insert_ignored_word(db_path: &str, word: &str) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
     let created_at = Utc::now().to_rfc3339();
@@ -143,7 +222,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("valid clock")
             .as_nanos();
-        std::env::temp_dir().join(format!("ortobot-test-{nanos}.db"))
+        std::env::temp_dir().join(format!("wordfixer-test-{nanos}.db"))
     }
 
     #[test]

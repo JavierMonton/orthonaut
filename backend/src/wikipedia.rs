@@ -5,11 +5,11 @@ use std::time::Duration;
 const MAX_RETRIES: u32 = 3;
 const BASE_BACKOFF_SECS: u64 = 5;
 
-/// Identifies Ortobot per [WMF User-Agent policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
-/// `wikimedia_contact` comes from [`crate::config::OrtobotConfig`] (`wikimedia_contact` in `ortobot.toml`).
+/// Identifies Wordfixer per [WMF User-Agent policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
+/// `wikimedia_contact` comes from [`crate::config::WordfixerConfig`] (`wikimedia_contact` in `wordfixer.toml`).
 pub fn wikimedia_http_user_agent(wikimedia_contact: &str) -> String {
     const VERSION: &str = env!("CARGO_PKG_VERSION");
-    format!("OrtobotBot/{VERSION} ({wikimedia_contact}; Wikipedia Spanish orthography checker) ortobot-backend/{VERSION}")
+    format!("Wordfixer/{VERSION} ({wikimedia_contact}; Wikipedia Spanish orthography checker) wordfixer-backend/{VERSION}")
 }
 
 fn wikimedia_identified(

@@ -177,7 +177,7 @@ fn load_suppressed_words(dict_dir: &Path) -> Result<HashSet<String>, CheckerErro
 }
 
 pub fn suppressions_path(dict_dir: &Path) -> std::path::PathBuf {
-    let from_env = std::env::var("ORTOBOT_SUPPRESSIONS_PATH")
+    let from_env = std::env::var("WORDFIXER_SUPPRESSIONS_PATH")
         .ok()
         .map(std::path::PathBuf::from);
     let default_path = dict_dir.join("suppressions.txt");

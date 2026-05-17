@@ -6,8 +6,11 @@ import {
   checkUrl,
   deleteResult,
   exportIgnoredWords,
+  getAuthStatus,
   getIgnoredWords,
   getResults,
+  loginWithWikipedia,
+  logout,
   sandboxCheck,
 } from './api'
 import CheckForm from './components/CheckForm'
@@ -27,13 +30,30 @@ function App() {
   const [sandboxInput, setSandboxInput] = useState('')
   const [sandboxResult, setSandboxResult] = useState<SandboxCheckResponse | null>(null)
   const [ignoredWords, setIgnoredWords] = useState<string[]>([])
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [oauthConfigured, setOauthConfigured] = useState(false)
 
   useEffect(() => {
     void (async () => {
       try {
-        const [initial, ignoredResponse] = await Promise.all([getResults(), getIgnoredWords()])
+        const [initial, ignoredResponse, authStatus] = await Promise.all([
+          getResults(),
+          getIgnoredWords(),
+          getAuthStatus(),
+        ])
         setResults(initial)
         setIgnoredWords(ignoredResponse.words)
+        setIsLoggedIn(authStatus.logged_in)
+        setOauthConfigured(authStatus.oauth_configured)
+
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('auth') === 'success') {
+          setSuccess('Logged in to Wikipedia successfully')
+          window.history.replaceState({}, '', window.location.pathname)
+        } else if (params.get('auth') === 'error') {
+          setError('Wikipedia login failed. Please try again.')
+          window.history.replaceState({}, '', window.location.pathname)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
       }
@@ -157,6 +177,16 @@ function App() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await logout()
+      setIsLoggedIn(false)
+      setSuccess('Logged out from Wikipedia')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Logout failed')
+    }
+  }
+
   const handleExportIgnoredWords = async () => {
     setLoading(true)
     setError(null)
@@ -176,10 +206,42 @@ function App() {
       {loading && <LoadingSpinner label="Checking article orthography..." />}
 
       <section className="mb-6">
-        <h1 className="mb-1 text-2xl font-bold text-slate-900">Ortobot</h1>
-        <p className="text-sm text-slate-600">
-          Check Spanish orthography from Wikipedia URLs or manual text/HTML sandbox input.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-1 text-2xl font-bold text-slate-900">Wordfixer</h1>
+            <p className="text-sm text-slate-600">
+              Check Spanish orthography from Wikipedia URLs or manual text/HTML sandbox input.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {oauthConfigured ? (
+              isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-300"
+                >
+                  Logout Wikipedia
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={loginWithWikipedia}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                >
+                  Login with Wikipedia
+                </button>
+              )
+            ) : (
+              <span
+                title="Add [oauth] section to wordfixer.toml to enable editing"
+                className="cursor-help rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
+              >
+                Editing not configured
+              </span>
+            )}
+          </div>
+        </div>
         <div className="mt-4 flex gap-2">
           <a
             href="#checker"
@@ -255,6 +317,8 @@ function App() {
                   onDelete={handleDelete}
                   onMarkValid={handleMarkValidWord}
                   ignoredWords={ignoredWordsSet}
+                  isLoggedIn={isLoggedIn}
+                  oauthConfigured={oauthConfigured}
                 />
               ))
             )}

@@ -1,9 +1,12 @@
 import type {
+  ApplyEditResponse,
   ArticleResult,
+  AuthStatusResponse,
   CheckResponse,
   ExportIgnoredWordsResponse,
   IgnoredWordsResponse,
   SandboxCheckResponse,
+  WordContextsResponse,
 } from './types'
 
 export async function getResults(): Promise<ArticleResult[]> {
@@ -101,6 +104,52 @@ export async function exportIgnoredWords(): Promise<ExportIgnoredWordsResponse> 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to export ignored words')
+  }
+  return response.json()
+}
+
+export async function getWordContexts(id: number, word: string): Promise<WordContextsResponse> {
+  const response = await fetch(`/api/results/${id}/contexts/${encodeURIComponent(word)}`)
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to load word contexts')
+  }
+  return response.json()
+}
+
+export async function getAuthStatus(): Promise<AuthStatusResponse> {
+  const response = await fetch('/api/auth/status')
+  if (!response.ok) {
+    throw new Error('Failed to get auth status')
+  }
+  return response.json()
+}
+
+export function loginWithWikipedia(): void {
+  window.location.href = '/api/auth/login'
+}
+
+export async function logout(): Promise<void> {
+  const response = await fetch('/api/auth/logout', { method: 'POST' })
+  if (!response.ok) {
+    throw new Error('Failed to log out')
+  }
+}
+
+export async function applyEdit(
+  articleId: number,
+  word: string,
+  replacement: string,
+  occurrenceIndex?: number,
+): Promise<ApplyEditResponse> {
+  const response = await fetch('/api/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ article_id: articleId, word, replacement, occurrence_index: occurrenceIndex }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to apply edit')
   }
   return response.json()
 }

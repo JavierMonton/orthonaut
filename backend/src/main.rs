@@ -10,6 +10,7 @@ mod checker;
 mod config;
 mod db;
 mod extractor;
+mod oauth;
 mod reporter;
 mod wikipedia;
 
@@ -17,15 +18,15 @@ mod wikipedia;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "ortobot_backend=info,tower_http=info".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "wordfixer_backend=info,tower_http=info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db_path = std::env::var("ORTOBOT_DB_PATH").unwrap_or_else(|_| "ortobot.db".to_string());
+    let db_path = std::env::var("WORDFIXER_DB_PATH").unwrap_or_else(|_| "wordfixer.db".to_string());
     db::init_db(&db_path)?;
 
-    let dictionary_dir = std::env::var("ORTOBOT_DICT_DIR")
+    let dictionary_dir = std::env::var("WORDFIXER_DICT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("dictionaries"));
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
@@ -35,12 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
-    let config_path = std::env::var("ORTOBOT_CONFIG_PATH").unwrap_or_else(|_| "ortobot.toml".to_string());
+    let config_path = std::env::var("WORDFIXER_CONFIG_PATH").unwrap_or_else(|_| "../wordfixer.toml".to_string());
     let config_path = Path::new(&config_path);
-    let app_config = config::OrtobotConfig::load(config_path)?;
+    let app_config = config::WordfixerConfig::load(config_path)?;
     tracing::info!(
         path = %app_config.path.display(),
-        "loaded Ortobot config"
+        "loaded Wordfixer config"
     );
 
     let wikimedia_ua = wikipedia::wikimedia_http_user_agent(&app_config.wikimedia_contact);
@@ -49,12 +50,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .user_agent(&wikimedia_ua)
         .build()?;
 
+    if let Some(ref oauth) = app_config.oauth {
+        tracing::info!(client_id = %oauth.client_id, "OAuth configured");
+    } else {
+        tracing::info!("OAuth not configured — Wikipedia editing disabled");
+    }
+
+    let oauth_config = app_config.oauth.map(|o| Arc::new(o));
+
     let state = api::AppState {
         db_path: Arc::new(db_path),
         suppressions_path: Arc::new(suppressions_path),
         http_client,
         checker: Arc::new(Mutex::new(checker)),
         wikimedia_contact: Arc::new(app_config.wikimedia_contact),
+        oauth_config,
+        oauth_pending_state: Arc::new(Mutex::new(None)),
     };
 
     let app = Router::new()
@@ -67,6 +78,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ignored-words/:word", delete(api::delete_ignored_word))
         .route("/api/results", get(api::list_results))
         .route("/api/results/:id", delete(api::delete_result))
+        .route("/api/results/:id/contexts/:word", get(api::get_word_contexts))
+        .route("/api/edit", post(api::apply_edit))
+        .route("/api/auth/login", get(oauth::auth_login))
+        .route("/api/auth/callback", get(oauth::auth_callback))
+        .route("/api/auth/status", get(oauth::auth_status))
+        .route("/api/auth/logout", post(oauth::auth_logout))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

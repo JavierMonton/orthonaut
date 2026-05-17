@@ -1,4 +1,4 @@
-# Words suppressed by Ortobot.
+# Words suppressed by Wordfixer.
 # Exported from DB + file merge.
 
 académicamente
@@ -103,6 +103,8 @@ dejándole
 deliciosamente
 densamente
 desarrollador
+desarrolladora
+desarrolladoras
 desarrolladores
 desktop
 destacable
@@ -159,6 +161,7 @@ garage
 gendarmería
 gestoría
 gincanas
+ginecológica
 globalización
 goleador
 gorgops
@@ -177,8 +180,10 @@ icónico
 imaginería
 implementación
 incremental
+indie
 industrialmente
 infestación
+inicialista
 inspirándolo
 interactuar
 intercomunitaria
@@ -228,6 +233,7 @@ miniálbum
 monitorea
 motion
 mouse
+multinstrumentista
 muppets
 music
 mustafá
@@ -239,8 +245,10 @@ nigeriana
 nigerianos
 nominaciones
 nominación
+obstétrica
 online
 opone
+origin
 ornitología
 otomano
 ottoman
@@ -258,6 +266,7 @@ podcast
 poemario
 polideportivo
 posapocalíptico
+power
 praefurnium
 preselecionada
 presumiblemente
@@ -271,6 +280,7 @@ psicosocial
 pueblecito
 punk
 puntaje
+quirófano
 quote
 quíntuple
 radiocarbono
@@ -289,6 +299,7 @@ reintroducción
 relevos
 remezclas
 remodelada
+rescatistas
 reses
 retrocontinuidad
 reubicar
@@ -351,12 +362,14 @@ tragamonedas
 traits
 trap
 típicamente
+underground
 uniprovincial
 urbanizables
 url
 versionada
 video
 videojuego
+violatoria
 visir
 viverista
 watch

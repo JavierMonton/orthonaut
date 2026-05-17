@@ -16,8 +16,10 @@ use tokio::sync::Mutex;
 
 use crate::{
     checker::SpellChecker,
+    config::OAuthConfig,
     db,
     extractor,
+    oauth,
     reporter::{self, ArticleResult, CheckResponse},
     wikipedia,
 };
@@ -29,6 +31,8 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub checker: Arc<Mutex<SpellChecker>>,
     pub wikimedia_contact: Arc<String>,
+    pub oauth_config: Option<Arc<OAuthConfig>>,
+    pub oauth_pending_state: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +72,26 @@ pub struct SandboxCheckResponse {
     pub wrong_words: Vec<String>,
     pub total_words: usize,
     pub misspelled_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WordContextsResponse {
+    pub paragraphs: Vec<String>,
+    pub total: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApplyEditRequest {
+    pub article_id: i64,
+    pub word: String,
+    pub replacement: String,
+    pub occurrence_index: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApplyEditResponse {
+    pub ok: bool,
+    pub new_revision: u64,
 }
 
 #[derive(Debug)]
@@ -158,7 +182,7 @@ pub async fn export_ignored_words(
     merged.extend(db_words);
     let exported_words: Vec<String> = merged.into_iter().collect();
 
-    let mut file_content = String::from("# Words suppressed by Ortobot.\n");
+    let mut file_content = String::from("# Words suppressed by Wordfixer.\n");
     file_content.push_str("# Exported from DB + file merge.\n\n");
     if !exported_words.is_empty() {
         file_content.push_str(&exported_words.join("\n"));
@@ -231,6 +255,362 @@ pub async fn sandbox_check(
     }))
 }
 
+pub async fn get_word_contexts(
+    State(state): State<AppState>,
+    Path((id, word)): Path<(i64, String)>,
+) -> Result<Json<WordContextsResponse>, ApiError> {
+    if word.trim().is_empty() {
+        return Err(ApiError::BadRequest("word is required".to_string()));
+    }
+
+    let article = db::get_article(state.db_path.as_str(), id)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+
+    let (fetch_url, _) = normalize_input_url(&article.page_url)?;
+    let contact = state.wikimedia_contact.as_str();
+    let page = wikipedia::fetch_page(&state.http_client, &fetch_url, contact)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let paragraphs = extractor::extract_paragraphs_for_word(&page.html, &word);
+    let total = paragraphs.len();
+    Ok(Json(WordContextsResponse { paragraphs, total }))
+}
+
+pub async fn apply_edit(
+    State(state): State<AppState>,
+    Json(payload): Json<ApplyEditRequest>,
+) -> Result<Json<ApplyEditResponse>, ApiError> {
+    if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
+        return Err(ApiError::BadRequest("word and replacement are required".to_string()));
+    }
+
+    let oauth_config = state
+        .oauth_config
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("OAuth is not configured".to_string()))?;
+
+    let access_token = if let Some(ref static_token) = oauth_config.token {
+        static_token.clone()
+    } else {
+        let token = db::get_oauth_token(state.db_path.as_str())
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
+
+        if is_token_expired(&token.expires_at) {
+            let refresh_token = token
+                .refresh_token
+                .as_deref()
+                .ok_or_else(|| ApiError::BadRequest("session expired, please log in again".to_string()))?;
+            let new_token = oauth::refresh_access_token(
+                &state.http_client,
+                refresh_token,
+                &oauth_config.client_id,
+                &oauth_config.client_secret,
+            )
+            .await
+            .map_err(|e| ApiError::Internal(e))?;
+            let expires_at = (chrono::Utc::now()
+                + chrono::Duration::seconds(new_token.expires_in as i64))
+            .to_rfc3339();
+            db::store_oauth_token(
+                state.db_path.as_str(),
+                &new_token.access_token,
+                new_token.refresh_token.as_deref(),
+                &expires_at,
+            )
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+            new_token.access_token
+        } else {
+            token.access_token
+        }
+    };
+
+    let article = db::get_article(state.db_path.as_str(), payload.article_id)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+
+    let title = extract_title_from_wiki_url(&article.page_url)
+        .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
+
+    let (wikitext, latest_id) =
+        fetch_wikitext(&state.http_client, &title, &access_token, state.wikimedia_contact.as_str())
+            .await
+            .map_err(ApiError::Internal)?;
+
+    let new_wikitext = replace_word_occurrences(&wikitext, &payload.word, &payload.replacement, payload.occurrence_index);
+    if new_wikitext == wikitext {
+        return Err(ApiError::BadRequest(format!(
+            "word '{}' not found in page wikitext",
+            payload.word
+        )));
+    }
+
+    let new_revision = submit_wiki_edit(
+        &state.http_client,
+        &title,
+        &new_wikitext,
+        &format!(
+            "Corrección ortográfica: «{}» → «{}»",
+            payload.word, payload.replacement
+        ),
+        latest_id,
+        &access_token,
+        state.wikimedia_contact.as_str(),
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
+    Ok(Json(ApplyEditResponse { ok: true, new_revision }))
+}
+
+fn is_token_expired(expires_at: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(expires_at)
+        .map(|exp| exp <= chrono::Utc::now())
+        .unwrap_or(true)
+}
+
+fn extract_title_from_wiki_url(url: &str) -> Option<String> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    let path = parsed.path();
+    path.strip_prefix("/wiki/").map(percent_decode)
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut out = Vec::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (
+                (bytes[i + 1] as char).to_digit(16),
+                (bytes[i + 2] as char).to_digit(16),
+            ) {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+// Action API structs for fetching wikitext
+#[derive(serde::Deserialize)]
+struct ActionQueryResponse {
+    query: ActionQuery,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionQuery {
+    pages: std::collections::HashMap<String, ActionPage>,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionPage {
+    revisions: Option<Vec<ActionRevision>>,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionRevision {
+    revid: u64,
+    slots: ActionSlots,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionSlots {
+    main: ActionSlotMain,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionSlotMain {
+    #[serde(rename = "*")]
+    content: String,
+}
+
+// Action API structs for CSRF token
+#[derive(serde::Deserialize)]
+struct ActionTokenResponse {
+    query: ActionTokenQuery,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionTokenQuery {
+    tokens: ActionTokens,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionTokens {
+    csrftoken: String,
+}
+
+// Action API structs for edit response
+#[derive(serde::Deserialize)]
+struct ActionEditResponse {
+    edit: ActionEditResult,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionEditResult {
+    newrevid: u64,
+}
+
+async fn fetch_wikitext(
+    client: &reqwest::Client,
+    title: &str,
+    access_token: &str,
+    wikimedia_contact: &str,
+) -> Result<(String, u64), String> {
+    let response = wikipedia::wikimedia_send(
+        client
+            .get("https://es.wikipedia.org/w/api.php")
+            .query(&[
+                ("action", "query"),
+                ("prop", "revisions"),
+                ("rvprop", "ids|content"),
+                ("rvslots", "main"),
+                ("titles", title),
+                ("format", "json"),
+            ])
+            .header("Authorization", format!("Bearer {access_token}"))
+            .header(reqwest::header::ACCEPT, "application/json"),
+        wikimedia_contact,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("wikitext fetch returned {status}: {body}"));
+    }
+
+    let payload: ActionQueryResponse = response.json().await.map_err(|e| e.to_string())?;
+    let page = payload
+        .query
+        .pages
+        .into_values()
+        .next()
+        .ok_or_else(|| "no page in wikitext response".to_string())?;
+    let rev = page
+        .revisions
+        .and_then(|mut r| { r.reverse(); r.pop() })
+        .ok_or_else(|| "no revisions in wikitext response".to_string())?;
+    Ok((rev.slots.main.content, rev.revid))
+}
+
+async fn fetch_csrf_token(
+    client: &reqwest::Client,
+    access_token: &str,
+    wikimedia_contact: &str,
+) -> Result<String, String> {
+    let response = wikipedia::wikimedia_send(
+        client
+            .get("https://es.wikipedia.org/w/api.php")
+            .query(&[
+                ("action", "query"),
+                ("meta", "tokens"),
+                ("type", "csrf"),
+                ("format", "json"),
+            ])
+            .header("Authorization", format!("Bearer {access_token}")),
+        wikimedia_contact,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("CSRF token fetch returned {status}: {body}"));
+    }
+
+    let payload: ActionTokenResponse = response.json().await.map_err(|e| e.to_string())?;
+    Ok(payload.query.tokens.csrftoken)
+}
+
+async fn submit_wiki_edit(
+    client: &reqwest::Client,
+    title: &str,
+    source: &str,
+    comment: &str,
+    latest_id: u64,
+    access_token: &str,
+    wikimedia_contact: &str,
+) -> Result<u64, String> {
+    let csrf_token = fetch_csrf_token(client, access_token, wikimedia_contact).await?;
+    let latest_id_str = latest_id.to_string();
+    let params = [
+        ("action", "edit"),
+        ("format", "json"),
+        ("title", title),
+        ("text", source),
+        ("summary", comment),
+        ("baserevid", latest_id_str.as_str()),
+        ("token", csrf_token.as_str()),
+    ];
+    let response = wikipedia::wikimedia_send(
+        client
+            .post("https://es.wikipedia.org/w/api.php")
+            .header("Authorization", format!("Bearer {access_token}"))
+            .form(&params),
+        wikimedia_contact,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("edit submit returned {status}: {body}"));
+    }
+
+    let edit_resp: ActionEditResponse = response.json().await.map_err(|e| e.to_string())?;
+    Ok(edit_resp.edit.newrevid)
+}
+
+fn replace_word_occurrences(text: &str, word: &str, replacement: &str, occurrence_index: Option<usize>) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let word_chars: Vec<char> = word.to_lowercase().chars().collect();
+    let word_len = word_chars.len();
+    let mut result = String::with_capacity(text.len());
+    let mut i = 0;
+    let mut match_count = 0usize;
+
+    while i < chars.len() {
+        if i + word_len <= chars.len() {
+            let slice_lower: Vec<char> = chars[i..i + word_len]
+                .iter()
+                .flat_map(|c| c.to_lowercase())
+                .collect();
+            if slice_lower == word_chars {
+                let prev_is_word = i > 0 && is_word_char(chars[i - 1]);
+                let next_is_word =
+                    i + word_len < chars.len() && is_word_char(chars[i + word_len]);
+                if !prev_is_word && !next_is_word {
+                    let should_replace = occurrence_index.map_or(true, |idx| idx == match_count);
+                    match_count += 1;
+                    if should_replace {
+                        result.push_str(replacement);
+                        i += word_len;
+                        continue;
+                    }
+                }
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+    result
+}
+
+fn is_word_char(c: char) -> bool {
+    c.is_alphabetic() || c == '\'' || c == '-'
+}
+
 fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
     let parsed = reqwest::Url::parse(input)
         .map_err(|_| ApiError::BadRequest("invalid url format".to_string()))?;
@@ -248,8 +628,9 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
         if title.is_empty() {
             return Err(ApiError::BadRequest("wikipedia page url is missing title".to_string()));
         }
+        let encoded = title.replace('/', "%2F");
         return Ok((
-            build_url(&parsed, &format!("/api/rest_v1/page/html/{title}")),
+            build_url(&parsed, &format!("/api/rest_v1/page/html/{encoded}")),
             build_url(&parsed, &format!("/wiki/{title}")),
         ));
     }
@@ -417,6 +798,21 @@ mod tests {
     }
 
     #[test]
+    fn encodes_slash_in_title_for_rest_url() {
+        let (fetch, display) =
+            normalize_input_url("https://es.wikipedia.org/wiki/Wikipedia:Zona_de_pruebas/4")
+                .expect("valid url");
+        assert_eq!(
+            fetch,
+            "https://es.wikipedia.org/api/rest_v1/page/html/Wikipedia:Zona_de_pruebas%2F4"
+        );
+        assert_eq!(
+            display,
+            "https://es.wikipedia.org/wiki/Wikipedia:Zona_de_pruebas/4"
+        );
+    }
+
+    #[test]
     fn keeps_rest_url_and_derives_display_url() {
         let (fetch, display) = normalize_input_url(
             "https://es.wikipedia.org/api/rest_v1/page/html/Madrid?redirect=no",
@@ -432,7 +828,7 @@ mod tests {
             .expect("valid clock")
             .as_nanos();
         std::env::temp_dir()
-            .join(format!("ortobot-api-test-{nanos}.db"))
+            .join(format!("wordfixer-api-test-{nanos}.db"))
             .to_string_lossy()
             .to_string()
     }
@@ -450,6 +846,8 @@ mod tests {
             http_client: reqwest::Client::new(),
             checker: Arc::new(Mutex::new(checker)),
             wikimedia_contact: Arc::new("wikipedia:es; User:Test".to_string()),
+            oauth_config: None,
+            oauth_pending_state: Arc::new(Mutex::new(None)),
         }
     }
 

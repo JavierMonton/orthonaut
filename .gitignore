@@ -31,5 +31,8 @@ frontend/dist-ssr/
 frontend/.vite/
 frontend/.cache/
 
+# --- Wordfixer config (contains secrets) ---
+/wordfixer.toml
+
 # --- Backend / Rust ---
 backend/target/

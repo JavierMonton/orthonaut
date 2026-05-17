@@ -28,3 +28,19 @@ export type ExportIgnoredWordsResponse = {
   exported_count: number
   path: string
 }
+
+export type WordContextsResponse = {
+  paragraphs: string[]
+  total: number
+}
+
+export type AuthStatusResponse = {
+  logged_in: boolean
+  expires_at: string | null
+  oauth_configured: boolean
+}
+
+export type ApplyEditResponse = {
+  ok: boolean
+  new_revision: number
+}

@@ -1,0 +1,13 @@
+# Wordfixer runtime configuration (see WORDFIXER_CONFIG_PATH env var to override path).
+# Copy this file to wordfixer.toml and fill in your values.
+
+# Wikimedia User-Agent / Api-User-Agent policy contact — URL, email, or wiki user form per:
+# https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
+wikimedia_contact = "https://es.wikipedia.org/wiki/User:YourUsername"
+
+# OAuth2 credentials from https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration
+# Remove the leading # to enable Wikipedia editing.
+# [oauth]
+# client_id = "..."
+# client_secret = "..."
+# redirect_uri = "http://localhost:5173/api/auth/callback"

@@ -1,5 +1,5 @@
 [package]
-name = "ortobot-backend"
+name = "wordfixer-backend"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,3 +19,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 thiserror = "1"
+rand = "0.8"
