@@ -165,6 +165,11 @@ fn should_skip(token: &ExtractedToken) -> bool {
     if token.normalized.contains('\'') || token.normalized.contains('-') {
         return true;
     }
+    // Skip tokens containing characters outside Latin script (CJK, Arabic, Cyrillic, etc.).
+    // U+024F is the last codepoint of Latin Extended-B, which covers all Spanish characters.
+    if token.normalized.chars().any(|c| c as u32 > 0x024F) {
+        return true;
+    }
     false
 }
 

@@ -17,6 +17,7 @@ anatonum
 angloperuano
 angoleña
 animalitos
+anovulatorio
 antiestéticos
 antigomecistas
 antillarum
@@ -31,6 +32,7 @@ askenazis
 autenticación
 autofértil
 autoría
+avistamiento
 azulgrana
 azulgranas
 bananas
@@ -104,10 +106,12 @@ decagonal
 dejándole
 deliciosamente
 densamente
+desacreditación
 desarrollador
 desarrolladora
 desarrolladoras
 desarrolladores
+desfamiliarizada
 desktop
 destacable
 destitución
@@ -118,7 +122,10 @@ display
 displaystyle
 displicata
 díptico
+ectoparásito
 electrificación
+electrolito
+eléctricamente
 empoderando
 emulsificación
 endemismo
@@ -184,16 +191,21 @@ implementación
 incremental
 indie
 industrialmente
+infertilidad
 infestación
+infértil
+infértiles
 inicialista
 inspirándolo
 interactuar
 intercomunitaria
 internacionalmente
 internet
+inusualmente
 inédito
 iraní
 italoestadounidense
+iónico
 jenízaros
 jugabilidad
 jumillano
@@ -213,6 +225,7 @@ lésbica
 lésbico
 lúdicas
 lúdico
+macleari
 madridistas
 malaguista
 maquilladora
@@ -255,9 +268,11 @@ origin
 ornitología
 otomano
 ottoman
+ovulación
 padding
 panamensis
 pandemia
+panga
 paralímpico
 pasha
 patrullaje
@@ -267,10 +282,13 @@ playboy
 poblacional
 podcast
 poemario
+polideportiva
+polideportivas
 polideportivo
 posapocalíptico
 power
 praefurnium
+preovulatoria
 preselecionada
 presumiblemente
 presídium
@@ -296,6 +314,8 @@ rectoría
 redescubierto
 reeleccionistas
 reentrada
+reflectante
+reflectividad
 regulatorio
 reintroducciones
 reintroducción
@@ -306,6 +326,7 @@ rescatistas
 reses
 retrocontinuidad
 reubicar
+revolviéndolo
 right
 robótica
 romanización
@@ -357,6 +378,7 @@ teleserie
 teleseries
 televisora
 teloneros
+tenística
 think
 tipologías
 todoterreno
@@ -365,6 +387,7 @@ tragamonedas
 traits
 trap
 típicamente
+ultrafina
 underground
 uniprovincial
 urbanizables
@@ -372,6 +395,7 @@ url
 versionada
 video
 videojuego
+vinculatorio
 violatoria
 visir
 viverista

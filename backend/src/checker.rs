@@ -388,4 +388,5 @@ mod tests {
     fn normalizes_ignored_words_before_storing() {
         assert_eq!(normalize_ignored_word("  PaLabra  "), "palabra".to_string());
     }
+
 }
