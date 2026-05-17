@@ -152,6 +152,10 @@ function App() {
         }
         return [...prev, normalized].sort((a, b) => a.localeCompare(b))
       })
+      const nowEmpty = results.filter(
+        (entry) => entry.wrong_words.filter((w) => w !== normalized).length === 0,
+      )
+      await Promise.all(nowEmpty.map((entry) => deleteResult(entry.id)))
       setResults((prev) =>
         prev
           .map((entry) => ({

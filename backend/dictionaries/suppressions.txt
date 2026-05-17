@@ -176,6 +176,8 @@ fálica
 führer
 garage
 gendarmería
+generalista
+generalistas
 gestoría
 gincanas
 ginecológica
@@ -316,10 +318,12 @@ quirófano
 quote
 quíntuple
 radiocarbono
+radiotelevisión
 ranking
 rapero
 reality
 reconfigurando
+reconversión
 recopilatorio
 rectoría
 redescubierto
@@ -352,6 +356,7 @@ senderismo
 sentimentalizaba
 separator
 setianos
+share
 shell
 sijismo
 sintonía
