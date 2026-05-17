@@ -1,7 +1,5 @@
-use std::collections::HashSet;
-
 use regex::Regex;
-use scraper::{ElementRef, Html, Selector};
+use scraper::{node::Node, ElementRef, Html, Selector};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractedToken {
@@ -26,25 +24,6 @@ pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
     }
 
     let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
-    let a_selector = Selector::parse("a").expect("valid a selector");
-
-    // Collect all words that appear as anchor text within article content.
-    let mut link_words: HashSet<String> = HashSet::new();
-    for node in &nodes {
-        if should_skip_node(node) {
-            continue;
-        }
-        for link in node.select(&a_selector) {
-            let text = link.text().collect::<String>();
-            for raw in splitter.split(&text) {
-                if let Some(token) = normalize_token(raw) {
-                    if !should_skip(&token) {
-                        link_words.insert(token.normalized);
-                    }
-                }
-            }
-        }
-    }
 
     let mut tokens = Vec::new();
 
@@ -52,19 +31,39 @@ pub fn extract_tokens(html: &str) -> Vec<ExtractedToken> {
         if should_skip_node(&node) {
             continue;
         }
-        let text = node.text().collect::<Vec<_>>().join(" ");
-        for raw in splitter.split(&text) {
-            if let Some(mut token) = normalize_token(raw) {
-                if should_skip(&token) {
-                    continue;
-                }
-                token.is_link = link_words.contains(&token.normalized);
-                tokens.push(token);
-            }
-        }
+        extract_tokens_from_node(node, &splitter, false, &mut tokens);
     }
 
     tokens
+}
+
+fn extract_tokens_from_node(
+    node: ElementRef<'_>,
+    splitter: &Regex,
+    in_link: bool,
+    tokens: &mut Vec<ExtractedToken>,
+) {
+    for child in node.children() {
+        match child.value() {
+            Node::Text(text) => {
+                for raw in splitter.split(text.as_ref()) {
+                    if let Some(mut token) = normalize_token(raw) {
+                        if !should_skip(&token) {
+                            token.is_link = in_link;
+                            tokens.push(token);
+                        }
+                    }
+                }
+            }
+            Node::Element(_) => {
+                if let Some(element_ref) = ElementRef::wrap(child) {
+                    let is_anchor = element_ref.value().name() == "a";
+                    extract_tokens_from_node(element_ref, splitter, in_link || is_anchor, tokens);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Returns up to 10 paragraph texts from `html` that contain `word` as a whole token.
