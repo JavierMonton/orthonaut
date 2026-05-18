@@ -110,6 +110,32 @@ pub fn extract_paragraphs_for_word(html: &str, word: &str) -> Vec<String> {
     paragraphs
 }
 
+/// Returns up to 10 wikitext blocks (blank-line-separated) that contain `word` as a whole token.
+pub fn extract_wikitext_paragraphs_for_word(wikitext: &str, word: &str) -> Vec<String> {
+    let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
+    let word_lower = word.to_lowercase();
+    let mut paragraphs = Vec::new();
+
+    for block in wikitext.split("\n\n") {
+        let trimmed = block.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let contains_word = splitter.split(trimmed).any(|token| {
+            let t = token.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '-');
+            !t.is_empty() && t.to_lowercase() == word_lower
+        });
+        if contains_word {
+            paragraphs.push(trimmed.to_string());
+            if paragraphs.len() >= 10 {
+                break;
+            }
+        }
+    }
+
+    paragraphs
+}
+
 pub fn extract_tokens_from_input(input: &str) -> Vec<ExtractedToken> {
     if looks_like_html(input) {
         return extract_tokens(input);

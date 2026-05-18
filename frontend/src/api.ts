@@ -52,6 +52,16 @@ export async function deleteResult(id: number): Promise<void> {
   }
 }
 
+export async function ignoreWordInResult(id: number, word: string): Promise<void> {
+  const response = await fetch(`/api/results/${id}/words/${encodeURIComponent(word)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to ignore word')
+  }
+}
+
 export async function sandboxCheck(content: string): Promise<SandboxCheckResponse> {
   const response = await fetch('/api/sandbox/check', {
     method: 'POST',

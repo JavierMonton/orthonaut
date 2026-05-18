@@ -9,6 +9,7 @@ import {
   getAuthStatus,
   getIgnoredWords,
   getResults,
+  ignoreWordInResult,
   loginWithWikipedia,
   logout,
   sandboxCheck,
@@ -181,6 +182,24 @@ function App() {
     }
   }
 
+  const handleIgnoreWord = async (resultId: number, word: string) => {
+    setError(null)
+    try {
+      await ignoreWordInResult(resultId, word)
+      setResults((prev) =>
+        prev
+          .map((entry) =>
+            entry.id === resultId
+              ? { ...entry, wrong_words: entry.wrong_words.filter((w) => w !== word) }
+              : entry,
+          )
+          .filter((entry) => entry.wrong_words.length > 0),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to ignore word')
+    }
+  }
+
   const handleLogout = async () => {
     try {
       await logout()
@@ -320,6 +339,7 @@ function App() {
                   result={result}
                   onDelete={handleDelete}
                   onMarkValid={handleMarkValidWord}
+                  onIgnore={(word) => void handleIgnoreWord(result.id, word)}
                   ignoredWords={ignoredWordsSet}
                   isLoggedIn={isLoggedIn}
                   oauthConfigured={oauthConfigured}

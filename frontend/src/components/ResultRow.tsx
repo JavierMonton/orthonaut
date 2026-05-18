@@ -9,6 +9,7 @@ type ResultRowProps = {
   result: ArticleResult
   onDelete: (id: number) => Promise<void>
   onMarkValid: (word: string) => Promise<void>
+  onIgnore: (word: string) => void
   ignoredWords: Set<string>
   isLoggedIn: boolean
   oauthConfigured: boolean
@@ -39,13 +40,15 @@ export default function ResultRow({
   result,
   onDelete,
   onMarkValid,
+  onIgnore,
   ignoredWords,
   isLoggedIn,
   oauthConfigured,
 }: ResultRowProps) {
   const [expandedWord, setExpandedWord] = useState<string | null>(null)
-  const [localIgnored, setLocalIgnored] = useState<Set<string>>(new Set())
   const [contextData, setContextData] = useState<Record<string, string[]>>({})
+  const [wikitextData, setWikitextData] = useState<Record<string, string[]>>({})
+  const [viewMode, setViewMode] = useState<Record<string, 'plain' | 'wikitext'>>({})
   const [contextIndex, setContextIndex] = useState<Record<string, number>>({})
   const [contextLoading, setContextLoading] = useState<Record<string, boolean>>({})
   const [replacement, setReplacement] = useState<Record<string, string>>({})
@@ -69,6 +72,7 @@ export default function ResultRow({
     try {
       const data = await getWordContexts(result.id, word)
       setContextData((prev) => ({ ...prev, [word]: data.paragraphs }))
+      setWikitextData((prev) => ({ ...prev, [word]: data.wikitext_paragraphs }))
       setContextIndex((prev) => ({ ...prev, [word]: 0 }))
       setReplacement((prev) => ({ ...prev, [word]: word }))
     } catch {
@@ -100,7 +104,7 @@ export default function ResultRow({
     }
   }
 
-  const visibleWords = result.wrong_words.filter((word) => !ignoredWords.has(word) && !localIgnored.has(word))
+  const visibleWords = result.wrong_words.filter((word) => !ignoredWords.has(word))
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -132,6 +136,8 @@ export default function ResultRow({
           {visibleWords.map((word) => {
             const isExpanded = expandedWord === word
             const paragraphs = contextData[word] ?? []
+            const wikitextParagraphs = wikitextData[word] ?? []
+            const mode = viewMode[word] ?? 'plain'
             const idx = contextIndex[word] ?? 0
             const isLoadingCtx = contextLoading[word] ?? false
             const edit = editState[word]
@@ -157,7 +163,7 @@ export default function ResultRow({
                     </Button>
                     <Button
                       type="button"
-                      onClick={() => setLocalIgnored((prev) => new Set([...prev, word]))}
+                      onClick={() => onIgnore(word)}
                       className="rounded bg-slate-400 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-500"
                     >
                       Ignore
@@ -169,15 +175,46 @@ export default function ResultRow({
                   <div className="mt-1 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                     {isLoadingCtx ? (
                       <p className="text-slate-500">Loading context…</p>
-                    ) : paragraphs.length === 0 ? (
+                    ) : paragraphs.length === 0 && wikitextParagraphs.length === 0 ? (
                       <p className="text-slate-500">No paragraph context found for this word.</p>
                     ) : (
                       <>
-                        <p className="mb-2 text-slate-500">
-                          Paragraph {idx + 1} of {paragraphs.length}
-                        </p>
-                        <p className="leading-relaxed">{highlightWord(paragraphs[idx], word)}</p>
-                        {paragraphs.length > 1 && (
+                        <div className="mb-2 flex items-center gap-3">
+                          <p className="text-slate-500">
+                            Paragraph {idx + 1} of {mode === 'plain' ? paragraphs.length : wikitextParagraphs.length}
+                          </p>
+                          <div className="flex rounded border border-slate-300 overflow-hidden text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewMode((prev) => ({ ...prev, [word]: 'plain' }))
+                                setContextIndex((prev) => ({ ...prev, [word]: 0 }))
+                              }}
+                              className={`px-2 py-0.5 transition ${mode === 'plain' ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                            >
+                              Plain
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewMode((prev) => ({ ...prev, [word]: 'wikitext' }))
+                                setContextIndex((prev) => ({ ...prev, [word]: 0 }))
+                              }}
+                              disabled={wikitextParagraphs.length === 0}
+                              className={`px-2 py-0.5 transition ${mode === 'wikitext' ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                              Wikitext
+                            </button>
+                          </div>
+                        </div>
+                        {mode === 'wikitext' ? (
+                          <pre className="whitespace-pre-wrap break-words font-mono leading-relaxed">
+                            {highlightWord(wikitextParagraphs[idx] ?? '', word)}
+                          </pre>
+                        ) : (
+                          <p className="leading-relaxed">{highlightWord(paragraphs[idx], word)}</p>
+                        )}
+                        {(mode === 'plain' ? paragraphs : wikitextParagraphs).length > 1 && (
                           <div className="mt-2 flex gap-2">
                             <button
                               type="button"
@@ -191,13 +228,14 @@ export default function ResultRow({
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={() => {
+                                const len = (mode === 'plain' ? paragraphs : wikitextParagraphs).length
                                 setContextIndex((prev) => ({
                                   ...prev,
-                                  [word]: Math.min(paragraphs.length - 1, idx + 1),
+                                  [word]: Math.min(len - 1, idx + 1),
                                 }))
-                              }
-                              disabled={idx === paragraphs.length - 1}
+                              }}
+                              disabled={idx === (mode === 'plain' ? paragraphs : wikitextParagraphs).length - 1}
                               className="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               Next

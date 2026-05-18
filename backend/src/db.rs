@@ -211,6 +211,40 @@ pub fn delete_ignored_word(db_path: &str, word: &str) -> rusqlite::Result<usize>
     conn.execute("DELETE FROM ignored_words WHERE word = ?1", params![word])
 }
 
+/// Removes `word` from the article's wrong_words list.
+/// Returns `true` if the article was deleted (no words left), `false` if updated.
+pub fn remove_word_from_article(db_path: &str, article_id: i64, word: &str) -> rusqlite::Result<bool> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT wrong_words FROM articles WHERE id = ?1",
+    )?;
+    let wrong_words_json: Option<String> = stmt
+        .query_map(params![article_id], |row| row.get(0))?
+        .next()
+        .transpose()?;
+
+    let Some(json) = wrong_words_json else {
+        return Ok(false);
+    };
+
+    let mut words: Vec<String> = serde_json::from_str(&json)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    words.retain(|w| w != word);
+
+    if words.is_empty() {
+        conn.execute("DELETE FROM articles WHERE id = ?1", params![article_id])?;
+        return Ok(true);
+    }
+
+    let updated_json = serde_json::to_string(&words)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE articles SET wrong_words = ?1 WHERE id = ?2",
+        params![updated_json, article_id],
+    )?;
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};

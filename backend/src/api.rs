@@ -78,6 +78,7 @@ pub struct SandboxCheckResponse {
 pub struct WordContextsResponse {
     pub paragraphs: Vec<String>,
     pub total: usize,
+    pub wikitext_paragraphs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,6 +202,18 @@ pub async fn export_ignored_words(
     }))
 }
 
+pub async fn ignore_word_in_result(
+    State(state): State<AppState>,
+    Path((id, word)): Path<(i64, String)>,
+) -> Result<StatusCode, ApiError> {
+    if word.trim().is_empty() {
+        return Err(ApiError::BadRequest("word is required".to_string()));
+    }
+    db::remove_word_from_article(state.db_path.as_str(), id, &word)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn delete_result(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -275,7 +288,17 @@ pub async fn get_word_contexts(
 
     let paragraphs = extractor::extract_paragraphs_for_word(&page.html, &word);
     let total = paragraphs.len();
-    Ok(Json(WordContextsResponse { paragraphs, total }))
+
+    let wikitext_paragraphs = if let Some(title) = extract_title_from_wiki_url(&article.page_url) {
+        fetch_wikitext(&state.http_client, &title, None, contact)
+            .await
+            .map(|(wt, _)| extractor::extract_wikitext_paragraphs_for_word(&wt, &word))
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    Ok(Json(WordContextsResponse { paragraphs, total, wikitext_paragraphs }))
 }
 
 pub async fn apply_edit(
@@ -335,7 +358,7 @@ pub async fn apply_edit(
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
     let (wikitext, latest_id) =
-        fetch_wikitext(&state.http_client, &title, &access_token, state.wikimedia_contact.as_str())
+        fetch_wikitext(&state.http_client, &title, Some(&access_token), state.wikimedia_contact.as_str())
             .await
             .map_err(ApiError::Internal)?;
 
@@ -461,24 +484,24 @@ struct ActionEditResult {
 async fn fetch_wikitext(
     client: &reqwest::Client,
     title: &str,
-    access_token: &str,
+    access_token: Option<&str>,
     wikimedia_contact: &str,
 ) -> Result<(String, u64), String> {
-    let response = wikipedia::wikimedia_send(
-        client
-            .get("https://es.wikipedia.org/w/api.php")
-            .query(&[
-                ("action", "query"),
-                ("prop", "revisions"),
-                ("rvprop", "ids|content"),
-                ("rvslots", "main"),
-                ("titles", title),
-                ("format", "json"),
-            ])
-            .header("Authorization", format!("Bearer {access_token}"))
-            .header(reqwest::header::ACCEPT, "application/json"),
-        wikimedia_contact,
-    )
+    let mut req = client
+        .get("https://es.wikipedia.org/w/api.php")
+        .query(&[
+            ("action", "query"),
+            ("prop", "revisions"),
+            ("rvprop", "ids|content"),
+            ("rvslots", "main"),
+            ("titles", title),
+            ("format", "json"),
+        ])
+        .header(reqwest::header::ACCEPT, "application/json");
+    if let Some(token) = access_token {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let response = wikipedia::wikimedia_send(req, wikimedia_contact)
     .await
     .map_err(|e| e.to_string())?;
 

@@ -32,6 +32,7 @@ export type ExportIgnoredWordsResponse = {
 export type WordContextsResponse = {
   paragraphs: string[]
   total: number
+  wikitext_paragraphs: string[]
 }
 
 export type AuthStatusResponse = {

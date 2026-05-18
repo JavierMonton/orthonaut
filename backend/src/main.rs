@@ -78,6 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ignored-words/:word", delete(api::delete_ignored_word))
         .route("/api/results", get(api::list_results))
         .route("/api/results/:id", delete(api::delete_result))
+        .route("/api/results/:id/words/:word", delete(api::ignore_word_in_result))
         .route("/api/results/:id/contexts/:word", get(api::get_word_contexts))
         .route("/api/edit", post(api::apply_edit))
         .route("/api/auth/login", get(oauth::auth_login))

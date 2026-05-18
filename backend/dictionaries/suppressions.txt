@@ -31,12 +31,15 @@ arjé
 arquidiócesis
 artísticamente
 askenazis
+austríaca
+austríaco
 autenticación
 autofértil
 autoría
 avistamiento
 azulgrana
 azulgranas
+añal
 bananas
 bangladesíes
 banjo
@@ -53,8 +56,10 @@ bonificación
 bonus
 bots
 britannica
+buffet
 cabarets
 cacana
+cacereño
 calamianensis
 caldarium
 calzos
@@ -72,6 +77,7 @@ cetosis
 champlevé
 charlestón
 chasselas
+children
 cirrhosus
 cladoicus
 clasificatorios
@@ -81,6 +87,7 @@ coeducación
 cofinanciación
 cofinanciando
 cofundadora
+colectivamente
 colesterolosis
 colombard
 column
@@ -146,21 +153,25 @@ estratificación
 estroboscópica
 estructuralmente
 etilefrina
+exalumno
 exempleado
 exempleados
 exequipo
 exfutbolista
 exgerente
 exjugador
+exnovio
 expresidente
 extradición
 farmacotécnicos
 fazil
+fenestratus
 finalización
 financieramente
 finlandés
 flex
 flexquote
+folk
 forintos
 former
 franquismo
@@ -182,6 +193,7 @@ gestoría
 gincanas
 ginecológica
 globalización
+globalmente
 goleador
 gorgops
 guardameta
@@ -221,6 +233,7 @@ jenízaros
 jugabilidad
 jumillano
 juntarlos
+jurisprudencial
 kantharos
 keniana
 kinesiológico
@@ -279,6 +292,7 @@ online
 opone
 origin
 ornitología
+orográficas
 otomano
 ottoman
 ovulación
@@ -286,6 +300,7 @@ padding
 panamensis
 pandemia
 panga
+paraestatal
 paralímpico
 pasha
 patrullaje
@@ -322,6 +337,7 @@ radiotelevisión
 ranking
 rapero
 reality
+reboteador
 reconfigurando
 reconversión
 recopilatorio
@@ -344,8 +360,10 @@ reubicar
 revolviéndolo
 right
 robótica
+rojiblanca
 romanización
 samuráis
+santafereña
 script
 scripting
 scripts
@@ -372,9 +390,11 @@ statistics
 stop
 strip
 subcampeona
+subcampeonato
 subcampeón
 subgrupos
 subterráneamente
+subzona
 sucederla
 superfamilia
 superhumana
@@ -409,6 +429,7 @@ underground
 uniprovincial
 urbanizables
 url
+vehicular
 versionada
 video
 videojuego
@@ -423,6 +444,7 @@ webs
 widgets
 width
 wikidata
+wing
 wéstern
 youtube
 ábside
