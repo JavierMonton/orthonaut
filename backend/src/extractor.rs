@@ -110,6 +110,31 @@ pub fn extract_paragraphs_for_word(html: &str, word: &str) -> Vec<String> {
     paragraphs
 }
 
+/// Returns true if `html` contains `word` as a whole token (accent-sensitive, case-insensitive).
+pub fn article_contains_word(html: &str, word: &str) -> bool {
+    let document = Html::parse_document(html);
+    let rendered_selector = Selector::parse("#mw-content-text p").expect("valid rendered selector");
+    let parsoid_selector = Selector::parse("body section p, body p").expect("valid parsoid selector");
+    let nodes: Vec<_> = {
+        let rendered: Vec<_> = document.select(&rendered_selector).collect();
+        if rendered.is_empty() { document.select(&parsoid_selector).collect() } else { rendered }
+    };
+    let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");
+    let word_lower = word.to_lowercase();
+    for node in &nodes {
+        if should_skip_node(node) { continue; }
+        let text = node.text().collect::<String>();
+        let trimmed = text.trim();
+        if splitter.split(trimmed).any(|token| {
+            let t = token.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '-');
+            !t.is_empty() && t.to_lowercase() == word_lower
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Returns up to 10 wikitext blocks (blank-line-separated) that contain `word` as a whole token.
 pub fn extract_wikitext_paragraphs_for_word(wikitext: &str, word: &str) -> Vec<String> {
     let splitter = Regex::new(r"[^\p{L}\p{Mn}\p{Pd}']+").expect("valid split regex");

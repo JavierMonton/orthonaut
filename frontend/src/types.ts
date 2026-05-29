@@ -45,3 +45,8 @@ export type ApplyEditResponse = {
   ok: boolean
   new_revision: number
 }
+
+export type SearchResult = {
+  title: string
+  url: string
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   addIgnoredWord,
+  applySearchEdit,
   checkRandomPage,
   checkUrl,
   deleteResult,
@@ -9,17 +10,19 @@ import {
   getAuthStatus,
   getIgnoredWords,
   getResults,
+  getSearchContexts,
   ignoreWordInResult,
   loginWithWikipedia,
   logout,
   sandboxCheck,
+  searchWikipedia,
 } from './api'
 import CheckForm from './components/CheckForm'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultRow from './components/ResultRow'
-import type { ArticleResult, SandboxCheckResponse } from './types'
+import type { ArticleResult, SandboxCheckResponse, SearchResult } from './types'
 
-type Section = 'checker' | 'sandbox'
+type Section = 'checker' | 'sandbox' | 'search'
 
 function App() {
   const [section, setSection] = useState<Section>('checker')
@@ -33,6 +36,12 @@ function App() {
   const [ignoredWords, setIgnoredWords] = useState<string[]>([])
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [oauthConfigured, setOauthConfigured] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchLimit, setSearchLimit] = useState(50)
+  const [searchOffset, setSearchOffset] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -224,6 +233,44 @@ function App() {
     }
   }
 
+  const handleSearchSubmit = async () => {
+    const query = searchQuery.trim()
+    if (!query) return
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const results = await searchWikipedia(query, searchLimit, 0)
+      setSearchResults(results)
+      setSearchTerm(query)
+      setSearchOffset(searchLimit)
+      if (results.length === 0) {
+        setSuccess(`No results found for "${query}"`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search request failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true)
+    setError(null)
+    try {
+      const results = await searchWikipedia(searchTerm, searchLimit, searchOffset)
+      setSearchResults((prev) => {
+        const existingUrls = new Set(prev.map((r) => r.url))
+        return [...prev, ...results.filter((r) => !existingUrls.has(r.url))]
+      })
+      setSearchOffset((prev) => prev + searchLimit)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search request failed')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl p-4 sm:p-6">
       {loading && <LoadingSpinner label="Checking article orthography..." />}
@@ -290,10 +337,22 @@ function App() {
           >
             Sandbox
           </a>
+          <a
+            href="#search"
+            onClick={(event) => {
+              event.preventDefault()
+              setSection('search')
+            }}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              section === 'search' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            Search/Replace
+          </a>
         </div>
       </section>
 
-      {section === 'checker' ? (
+      {section === 'checker' && (
         <>
           <section className="mb-4">
             <CheckForm
@@ -348,7 +407,9 @@ function App() {
             )}
           </section>
         </>
-      ) : (
+      )}
+
+      {section === 'sandbox' && (
         <>
           <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <label htmlFor="sandbox-input" className="mb-2 block text-sm font-medium text-slate-800">
@@ -411,6 +472,98 @@ function App() {
                 </ul>
               )}
             </section>
+          )}
+        </>
+      )}
+
+      {section === 'search' && (
+        <>
+          <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label htmlFor="search-input" className="mb-2 block text-sm font-medium text-slate-800">
+              Search term (exact match)
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="search-input"
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') void handleSearchSubmit() }}
+                placeholder="e.g. categoria"
+                className="flex-1 rounded-md border border-slate-300 p-2 text-sm outline-none ring-blue-500 transition focus:ring-2"
+                disabled={loading}
+              />
+              <select
+                value={searchLimit}
+                onChange={(event) => setSearchLimit(Number(event.target.value))}
+                disabled={loading}
+                className="rounded-md border border-slate-300 p-2 text-sm outline-none ring-blue-500 transition focus:ring-2"
+                title="Number of Wikipedia pages to analyze"
+              >
+                {[10, 20, 50, 100, 200].map((n) => (
+                  <option key={n} value={n}>{n} pages</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => void handleSearchSubmit()}
+                disabled={loading || searchQuery.trim().length === 0}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Search Wikipedia
+              </button>
+            </div>
+          </section>
+
+          {error && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          <section className="space-y-3">
+            {searchResults.map((result) => (
+              <ResultRow
+                key={result.url}
+                result={{
+                  id: 0,
+                  title: result.title,
+                  url: result.url,
+                  revision_id: '',
+                  wrong_words: [searchTerm],
+                  checked_at: '',
+                }}
+                onDelete={() => {
+                  setSearchResults((prev) => prev.filter((r) => r.url !== result.url))
+                  return Promise.resolve()
+                }}
+                isLoggedIn={isLoggedIn}
+                oauthConfigured={oauthConfigured}
+                onFetchContexts={(word) => getSearchContexts(result.url, word)}
+                onApplyEdit={(word, replacement, occurrenceIndex) =>
+                  applySearchEdit(result.url, word, replacement, occurrenceIndex)
+                }
+              />
+            ))}
+          </section>
+
+          {searchTerm && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void handleLoadMore()}
+                disabled={loadingMore}
+                className="rounded-md border border-slate-300 bg-white px-6 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingMore ? 'Loading…' : `Load more (next ${searchLimit} pages)`}
+              </button>
+            </div>
           )}
         </>
       )}

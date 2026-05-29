@@ -3,16 +3,18 @@ import { useState } from 'react'
 import { Button } from '@headlessui/react'
 
 import { applyEdit, getWordContexts } from '../api'
-import type { ArticleResult } from '../types'
+import type { ApplyEditResponse, ArticleResult, WordContextsResponse } from '../types'
 
 type ResultRowProps = {
   result: ArticleResult
   onDelete: (id: number) => Promise<void>
-  onMarkValid: (word: string) => Promise<void>
-  onIgnore: (word: string) => void
-  ignoredWords: Set<string>
+  onMarkValid?: (word: string) => Promise<void>
+  onIgnore?: (word: string) => void
+  ignoredWords?: Set<string>
   isLoggedIn: boolean
   oauthConfigured: boolean
+  onFetchContexts?: (word: string) => Promise<WordContextsResponse>
+  onApplyEdit?: (word: string, replacement: string, occurrenceIndex?: number) => Promise<ApplyEditResponse>
 }
 
 type EditState = {
@@ -41,9 +43,11 @@ export default function ResultRow({
   onDelete,
   onMarkValid,
   onIgnore,
-  ignoredWords,
+  ignoredWords = new Set(),
   isLoggedIn,
   oauthConfigured,
+  onFetchContexts,
+  onApplyEdit,
 }: ResultRowProps) {
   const [expandedWord, setExpandedWord] = useState<string | null>(null)
   const [contextData, setContextData] = useState<Record<string, string[]>>({})
@@ -55,7 +59,7 @@ export default function ResultRow({
   const [editState, setEditState] = useState<Record<string, EditState>>({})
 
   const handleDelete = async () => {
-    const accepted = window.confirm(`Delete "${result.title}" from database?`)
+    const accepted = window.confirm(`Delete "${result.title}"?`)
     if (!accepted) return
     await onDelete(result.id)
   }
@@ -70,7 +74,8 @@ export default function ResultRow({
 
     setContextLoading((prev) => ({ ...prev, [word]: true }))
     try {
-      const data = await getWordContexts(result.id, word)
+      const fetchFn = onFetchContexts ?? ((w: string) => getWordContexts(result.id, w))
+      const data = await fetchFn(word)
       setContextData((prev) => ({ ...prev, [word]: data.paragraphs }))
       setWikitextData((prev) => ({ ...prev, [word]: data.wikitext_paragraphs }))
       setContextIndex((prev) => ({ ...prev, [word]: 0 }))
@@ -88,7 +93,8 @@ export default function ResultRow({
 
     setEditState((prev) => ({ ...prev, [word]: { loading: true } }))
     try {
-      const res = await applyEdit(result.id, word, rep.trim(), occurrenceIndex)
+      const editFn = onApplyEdit ?? ((w: string, r: string, idx?: number) => applyEdit(result.id, w, r, idx))
+      const res = await editFn(word, rep.trim(), occurrenceIndex)
       setEditState((prev) => ({
         ...prev,
         [word]: { loading: false, ok: true, revision: res.new_revision },
@@ -118,7 +124,9 @@ export default function ResultRow({
           >
             {result.title}
           </a>
-          <p className="mt-1 text-xs text-slate-500">Revision: {result.revision_id}</p>
+          {result.revision_id && (
+            <p className="mt-1 text-xs text-slate-500">Revision: {result.revision_id}</p>
+          )}
         </div>
         <Button
           type="button"
@@ -154,20 +162,24 @@ export default function ResultRow({
                     >
                       {isExpanded ? 'Collapse' : 'Expand'}
                     </Button>
-                    <Button
-                      type="button"
-                      onClick={() => void onMarkValid(word)}
-                      className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700"
-                    >
-                      Valid word
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => onIgnore(word)}
-                      className="rounded bg-slate-400 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-500"
-                    >
-                      Ignore
-                    </Button>
+                    {onMarkValid && (
+                      <Button
+                        type="button"
+                        onClick={() => void onMarkValid(word)}
+                        className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700"
+                      >
+                        Valid word
+                      </Button>
+                    )}
+                    {onIgnore && (
+                      <Button
+                        type="button"
+                        onClick={() => onIgnore(word)}
+                        className="rounded bg-slate-400 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-500"
+                      >
+                        Ignore
+                      </Button>
+                    )}
                   </div>
                 </div>
 

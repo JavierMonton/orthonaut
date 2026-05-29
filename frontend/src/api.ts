@@ -6,6 +6,7 @@ import type {
   ExportIgnoredWordsResponse,
   IgnoredWordsResponse,
   SandboxCheckResponse,
+  SearchResult,
   WordContextsResponse,
 } from './types'
 
@@ -160,6 +161,50 @@ export async function applyEdit(
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to apply edit')
+  }
+  return response.json()
+}
+
+export async function searchWikipedia(query: string, limit = 50, offset = 0): Promise<SearchResult[]> {
+  const response = await fetch('/api/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, limit, offset }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to search Wikipedia')
+  }
+  return response.json()
+}
+
+export async function getSearchContexts(url: string, word: string): Promise<WordContextsResponse> {
+  const response = await fetch('/api/search/contexts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, word }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to load search contexts')
+  }
+  return response.json()
+}
+
+export async function applySearchEdit(
+  url: string,
+  word: string,
+  replacement: string,
+  occurrenceIndex?: number,
+): Promise<ApplyEditResponse> {
+  const response = await fetch('/api/search/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, word, replacement, occurrence_index: occurrenceIndex }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to apply search edit')
   }
   return response.json()
 }

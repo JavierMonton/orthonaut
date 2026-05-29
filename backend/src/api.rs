@@ -35,9 +35,38 @@ pub struct AppState {
     pub oauth_pending_state: Arc<Mutex<Option<String>>>,
 }
 
+const SEARCH_MAX_RESULTS: usize = 10;
+
 #[derive(Debug, Deserialize)]
 pub struct CheckRequest {
     pub url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchRequest {
+    pub query: String,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchResponseItem {
+    pub title: String,
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchContextsRequest {
+    pub url: String,
+    pub word: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApplySearchEditRequest {
+    pub url: String,
+    pub word: String,
+    pub replacement: String,
+    pub occurrence_index: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -309,47 +338,6 @@ pub async fn apply_edit(
         return Err(ApiError::BadRequest("word and replacement are required".to_string()));
     }
 
-    let oauth_config = state
-        .oauth_config
-        .as_ref()
-        .ok_or_else(|| ApiError::BadRequest("OAuth is not configured".to_string()))?;
-
-    let access_token = if let Some(ref static_token) = oauth_config.token {
-        static_token.clone()
-    } else {
-        let token = db::get_oauth_token(state.db_path.as_str())
-            .map_err(|e| ApiError::Internal(e.to_string()))?
-            .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
-
-        if is_token_expired(&token.expires_at) {
-            let refresh_token = token
-                .refresh_token
-                .as_deref()
-                .ok_or_else(|| ApiError::BadRequest("session expired, please log in again".to_string()))?;
-            let new_token = oauth::refresh_access_token(
-                &state.http_client,
-                refresh_token,
-                &oauth_config.client_id,
-                &oauth_config.client_secret,
-            )
-            .await
-            .map_err(|e| ApiError::Internal(e))?;
-            let expires_at = (chrono::Utc::now()
-                + chrono::Duration::seconds(new_token.expires_in as i64))
-            .to_rfc3339();
-            db::store_oauth_token(
-                state.db_path.as_str(),
-                &new_token.access_token,
-                new_token.refresh_token.as_deref(),
-                &expires_at,
-            )
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
-            new_token.access_token
-        } else {
-            token.access_token
-        }
-    };
-
     let article = db::get_article(state.db_path.as_str(), payload.article_id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
@@ -357,35 +345,247 @@ pub async fn apply_edit(
     let title = extract_title_from_wiki_url(&article.page_url)
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
-    let (wikitext, latest_id) =
-        fetch_wikitext(&state.http_client, &title, Some(&access_token), state.wikimedia_contact.as_str())
-            .await
-            .map_err(ApiError::Internal)?;
-
-    let new_wikitext = replace_word_occurrences(&wikitext, &payload.word, &payload.replacement, payload.occurrence_index);
-    if new_wikitext == wikitext {
-        return Err(ApiError::BadRequest(format!(
-            "word '{}' not found in page wikitext",
-            payload.word
-        )));
-    }
-
-    let new_revision = submit_wiki_edit(
+    let access_token = resolve_access_token(&state).await?;
+    let new_revision = perform_wiki_edit(
         &state.http_client,
         &title,
-        &new_wikitext,
-        &format!(
-            "Corrección ortográfica: «{}» → «{}»",
-            payload.word, payload.replacement
-        ),
-        latest_id,
+        &payload.word,
+        &payload.replacement,
+        payload.occurrence_index,
         &access_token,
         state.wikimedia_contact.as_str(),
     )
-    .await
-    .map_err(ApiError::Internal)?;
+    .await?;
 
     Ok(Json(ApplyEditResponse { ok: true, new_revision }))
+}
+
+// Wikipedia search API deserialization structs
+#[derive(serde::Deserialize)]
+struct WikiSearchResponse {
+    query: WikiSearchQuery,
+}
+
+#[derive(serde::Deserialize)]
+struct WikiSearchQuery {
+    search: Vec<WikiSearchItem>,
+}
+
+#[derive(serde::Deserialize)]
+struct WikiSearchItem {
+    title: String,
+}
+
+pub async fn search_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<SearchRequest>,
+) -> Result<Json<Vec<SearchResponseItem>>, ApiError> {
+    let query = payload.query.trim().to_string();
+    if query.is_empty() {
+        return Err(ApiError::BadRequest("query is required".to_string()));
+    }
+
+    let search_term = format!("\"{}\"", query);
+    let limit = payload.limit.unwrap_or(SEARCH_MAX_RESULTS as u32).min(200);
+    let limit_str = limit.to_string();
+    let offset_str = payload.offset.unwrap_or(0).to_string();
+    let response = wikipedia::wikimedia_send(
+        state
+            .http_client
+            .get("https://es.wikipedia.org/w/api.php")
+            .query(&[
+                ("action", "query"),
+                ("list", "search"),
+                ("srsearch", search_term.as_str()),
+                ("srlimit", limit_str.as_str()),
+                ("sroffset", offset_str.as_str()),
+                ("srnamespace", "0"),
+                ("format", "json"),
+            ])
+            .header(reqwest::header::ACCEPT, "application/json"),
+        state.wikimedia_contact.as_str(),
+    )
+    .await
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(ApiError::Internal(format!("Wikipedia search returned {status}: {body}")));
+    }
+
+    let payload: WikiSearchResponse = response.json().await.map_err(|e| ApiError::Internal(e.to_string()))?;
+    let items: Vec<SearchResponseItem> = payload
+        .query
+        .search
+        .into_iter()
+        .map(|item| {
+            let encoded = item.title.replace(' ', "_");
+            SearchResponseItem {
+                url: format!("https://es.wikipedia.org/wiki/{encoded}"),
+                title: item.title,
+            }
+        })
+        .collect();
+
+    // Post-filter: keep only articles that actually contain the exact word (accent-sensitive)
+    let filter_futures: Vec<_> = items.iter().map(|item| {
+        let http_client = state.http_client.clone();
+        let contact = state.wikimedia_contact.clone();
+        let word = query.clone();
+        let fetch_url = normalize_input_url(&item.url)
+            .map(|(fetch, _)| fetch)
+            .unwrap_or_else(|_| item.url.clone());
+        async move {
+            match wikipedia::fetch_page(&http_client, &fetch_url, &contact).await {
+                Ok(page) => extractor::article_contains_word(&page.html, &word),
+                Err(_) => true,
+            }
+        }
+    }).collect();
+    let keep_flags = futures::future::join_all(filter_futures).await;
+    let items: Vec<_> = items
+        .into_iter()
+        .zip(keep_flags)
+        .filter_map(|(item, keep)| if keep { Some(item) } else { None })
+        .collect();
+
+    Ok(Json(items))
+}
+
+pub async fn get_search_contexts(
+    State(state): State<AppState>,
+    Json(payload): Json<SearchContextsRequest>,
+) -> Result<Json<WordContextsResponse>, ApiError> {
+    if payload.url.trim().is_empty() || payload.word.trim().is_empty() {
+        return Err(ApiError::BadRequest("url and word are required".to_string()));
+    }
+
+    let (fetch_url, display_url) = normalize_input_url(&payload.url)?;
+    let contact = state.wikimedia_contact.as_str();
+
+    let page = wikipedia::fetch_page(&state.http_client, &fetch_url, contact)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let paragraphs = extractor::extract_paragraphs_for_word(&page.html, &payload.word);
+    let total = paragraphs.len();
+
+    let wikitext_paragraphs = if let Some(title) = extract_title_from_wiki_url(&display_url) {
+        fetch_wikitext(&state.http_client, &title, None, contact)
+            .await
+            .map(|(wt, _)| extractor::extract_wikitext_paragraphs_for_word(&wt, &payload.word))
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    Ok(Json(WordContextsResponse { paragraphs, total, wikitext_paragraphs }))
+}
+
+pub async fn apply_search_edit(
+    State(state): State<AppState>,
+    Json(payload): Json<ApplySearchEditRequest>,
+) -> Result<Json<ApplyEditResponse>, ApiError> {
+    if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
+        return Err(ApiError::BadRequest("word and replacement are required".to_string()));
+    }
+
+    let (_, display_url) = normalize_input_url(&payload.url)?;
+    let title = extract_title_from_wiki_url(&display_url)
+        .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
+
+    let access_token = resolve_access_token(&state).await?;
+    let new_revision = perform_wiki_edit(
+        &state.http_client,
+        &title,
+        &payload.word,
+        &payload.replacement,
+        payload.occurrence_index,
+        &access_token,
+        state.wikimedia_contact.as_str(),
+    )
+    .await?;
+
+    Ok(Json(ApplyEditResponse { ok: true, new_revision }))
+}
+
+async fn resolve_access_token(state: &AppState) -> Result<String, ApiError> {
+    let oauth_config = state
+        .oauth_config
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("OAuth is not configured".to_string()))?;
+
+    if let Some(ref static_token) = oauth_config.token {
+        return Ok(static_token.clone());
+    }
+
+    let token = db::get_oauth_token(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
+
+    if is_token_expired(&token.expires_at) {
+        let refresh_token = token
+            .refresh_token
+            .as_deref()
+            .ok_or_else(|| ApiError::BadRequest("session expired, please log in again".to_string()))?;
+        let new_token = oauth::refresh_access_token(
+            &state.http_client,
+            refresh_token,
+            &oauth_config.client_id,
+            &oauth_config.client_secret,
+        )
+        .await
+        .map_err(|e| ApiError::Internal(e))?;
+        let expires_at = (chrono::Utc::now()
+            + chrono::Duration::seconds(new_token.expires_in as i64))
+        .to_rfc3339();
+        db::store_oauth_token(
+            state.db_path.as_str(),
+            &new_token.access_token,
+            new_token.refresh_token.as_deref(),
+            &expires_at,
+        )
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        Ok(new_token.access_token)
+    } else {
+        Ok(token.access_token)
+    }
+}
+
+async fn perform_wiki_edit(
+    client: &reqwest::Client,
+    title: &str,
+    word: &str,
+    replacement: &str,
+    occurrence_index: Option<usize>,
+    access_token: &str,
+    wikimedia_contact: &str,
+) -> Result<u64, ApiError> {
+    let (wikitext, latest_id) =
+        fetch_wikitext(client, title, Some(access_token), wikimedia_contact)
+            .await
+            .map_err(ApiError::Internal)?;
+
+    let new_wikitext = replace_word_occurrences(&wikitext, word, replacement, occurrence_index);
+    if new_wikitext == wikitext {
+        return Err(ApiError::BadRequest(format!(
+            "word '{}' not found in page wikitext",
+            word
+        )));
+    }
+
+    submit_wiki_edit(
+        client,
+        title,
+        &new_wikitext,
+        &format!("Corrección ortográfica: «{}» → «{}»", word, replacement),
+        latest_id,
+        access_token,
+        wikimedia_contact,
+    )
+    .await
+    .map_err(ApiError::Internal)
 }
 
 fn is_token_expired(expires_at: &str) -> bool {
