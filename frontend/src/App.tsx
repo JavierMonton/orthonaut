@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import {
+  addAlwaysWrongWord,
   addIgnoredWord,
   applySearchEdit,
   checkRandomPage,
   checkUrl,
+  deleteAlwaysWrongWord,
   deleteResult,
+  exportAlwaysWrongWords,
   exportIgnoredWords,
+  getAlwaysWrongWords,
   getAuthStatus,
   getIgnoredWords,
   getResults,
@@ -17,6 +21,7 @@ import {
   sandboxCheck,
   searchWikipedia,
 } from './api'
+import AlwaysWrongWordsManager from './components/AlwaysWrongWordsManager'
 import CheckForm from './components/CheckForm'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultRow from './components/ResultRow'
@@ -34,6 +39,7 @@ function App() {
   const [sandboxInput, setSandboxInput] = useState('')
   const [sandboxResult, setSandboxResult] = useState<SandboxCheckResponse | null>(null)
   const [ignoredWords, setIgnoredWords] = useState<string[]>([])
+  const [alwaysWrongWords, setAlwaysWrongWords] = useState<string[]>([])
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [oauthConfigured, setOauthConfigured] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -46,13 +52,15 @@ function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const [initial, ignoredResponse, authStatus] = await Promise.all([
+        const [initial, ignoredResponse, authStatus, alwaysWrongResponse] = await Promise.all([
           getResults(),
           getIgnoredWords(),
           getAuthStatus(),
+          getAlwaysWrongWords(),
         ])
         setResults(initial)
         setIgnoredWords(ignoredResponse.words)
+        setAlwaysWrongWords(alwaysWrongResponse.words)
         setIsLoggedIn(authStatus.logged_in)
         setOauthConfigured(authStatus.oauth_configured)
 
@@ -233,6 +241,40 @@ function App() {
     }
   }
 
+  const handleAddAlwaysWrongWord = async (word: string) => {
+    setError(null)
+    try {
+      await addAlwaysWrongWord(word)
+      setAlwaysWrongWords((prev) => {
+        if (prev.includes(word)) return prev
+        return [...prev, word].sort((a, b) => a.localeCompare(b))
+      })
+      setSuccess(`"${word}" will now always be flagged as an error`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add always wrong word')
+    }
+  }
+
+  const handleDeleteAlwaysWrongWord = async (word: string) => {
+    setError(null)
+    try {
+      await deleteAlwaysWrongWord(word)
+      setAlwaysWrongWords((prev) => prev.filter((w) => w !== word))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove always wrong word')
+    }
+  }
+
+  const handleExportAlwaysWrongWords = async () => {
+    setError(null)
+    try {
+      const response = await exportAlwaysWrongWords()
+      setSuccess(`Exported ${response.exported_count} always wrong words to ${response.path}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export always wrong words')
+    }
+  }
+
   const handleSearchSubmit = async () => {
     const query = searchQuery.trim()
     if (!query) return
@@ -362,15 +404,20 @@ function App() {
               onSubmit={handleSubmit}
               onAnalyzeRandom={handleRandomSubmit}
             />
-            <div className="mt-3">
+            <div className="mt-3 flex flex-col gap-3">
               <button
                 type="button"
                 onClick={() => void handleExportIgnoredWords()}
                 disabled={loading}
-                className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Export ignored words to file
               </button>
+              <AlwaysWrongWordsManager
+                count={alwaysWrongWords.length}
+                onAdd={handleAddAlwaysWrongWord}
+                onExport={handleExportAlwaysWrongWords}
+              />
             </div>
           </section>
 

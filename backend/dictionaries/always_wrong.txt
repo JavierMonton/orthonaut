@@ -1,0 +1,5 @@
+# Words always flagged as errors by Wordfixer.
+# Exported from DB + file merge.
+
+guió
+és

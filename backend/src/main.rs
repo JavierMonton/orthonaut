@@ -32,7 +32,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
     let ignored_words = db::list_ignored_words(&db_path)?;
     checker.add_ignored_words(ignored_words);
+    let always_wrong = db::list_always_wrong_words(&db_path)?;
+    checker.add_always_wrong_words(always_wrong);
     let suppressions_path = checker::suppressions_path(&dictionary_dir)
+        .to_string_lossy()
+        .to_string();
+    let always_wrong_path = checker::always_wrong_path(&dictionary_dir)
         .to_string_lossy()
         .to_string();
 
@@ -61,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = api::AppState {
         db_path: Arc::new(db_path),
         suppressions_path: Arc::new(suppressions_path),
+        always_wrong_path: Arc::new(always_wrong_path),
         http_client,
         checker: Arc::new(Mutex::new(checker)),
         wikimedia_contact: Arc::new(app_config.wikimedia_contact),
@@ -76,6 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ignored-words", post(api::add_ignored_word))
         .route("/api/ignored-words/export", post(api::export_ignored_words))
         .route("/api/ignored-words/:word", delete(api::delete_ignored_word))
+        .route("/api/always-wrong-words", get(api::list_always_wrong_words))
+        .route("/api/always-wrong-words", post(api::add_always_wrong_word))
+        .route("/api/always-wrong-words/export", post(api::export_always_wrong_words))
+        .route("/api/always-wrong-words/:word", delete(api::delete_always_wrong_word))
         .route("/api/results", get(api::list_results))
         .route("/api/results/:id", delete(api::delete_result))
         .route("/api/results/:id/words/:word", delete(api::ignore_word_in_result))

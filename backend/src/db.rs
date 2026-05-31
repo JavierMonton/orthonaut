@@ -28,6 +28,10 @@ pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
             word TEXT PRIMARY KEY,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS always_wrong_words (
+            word TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS oauth_tokens (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             access_token TEXT NOT NULL,
@@ -209,6 +213,38 @@ pub fn list_ignored_words(db_path: &str) -> rusqlite::Result<Vec<String>> {
 pub fn delete_ignored_word(db_path: &str, word: &str) -> rusqlite::Result<usize> {
     let conn = Connection::open(db_path)?;
     conn.execute("DELETE FROM ignored_words WHERE word = ?1", params![word])
+}
+
+pub fn insert_always_wrong_word(db_path: &str, word: &str) -> rusqlite::Result<()> {
+    let conn = Connection::open(db_path)?;
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO always_wrong_words (word, created_at)
+        VALUES (?1, ?2)
+        ON CONFLICT(word) DO NOTHING
+        "#,
+        params![word, created_at],
+    )?;
+    Ok(())
+}
+
+pub fn list_always_wrong_words(db_path: &str) -> rusqlite::Result<Vec<String>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT word
+        FROM always_wrong_words
+        ORDER BY word ASC
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
+pub fn delete_always_wrong_word(db_path: &str, word: &str) -> rusqlite::Result<usize> {
+    let conn = Connection::open(db_path)?;
+    conn.execute("DELETE FROM always_wrong_words WHERE word = ?1", params![word])
 }
 
 /// Removes `word` from the article's wrong_words list.

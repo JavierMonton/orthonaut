@@ -24,6 +24,15 @@ export type IgnoredWordsResponse = {
   words: string[]
 }
 
+export type AlwaysWrongWordsResponse = {
+  words: string[]
+}
+
+export type ExportAlwaysWrongWordsResponse = {
+  exported_count: number
+  path: string
+}
+
 export type ExportIgnoredWordsResponse = {
   exported_count: number
   path: string

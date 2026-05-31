@@ -28,6 +28,7 @@ use crate::{
 pub struct AppState {
     pub db_path: Arc<String>,
     pub suppressions_path: Arc<String>,
+    pub always_wrong_path: Arc<String>,
     pub http_client: reqwest::Client,
     pub checker: Arc<Mutex<SpellChecker>>,
     pub wikimedia_contact: Arc<String>,
@@ -76,6 +77,22 @@ pub struct SandboxCheckRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct AddIgnoredWordRequest {
+    pub word: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AlwaysWrongWordsResponse {
+    pub words: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportAlwaysWrongWordsResponse {
+    pub exported_count: usize,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddAlwaysWrongWordRequest {
     pub word: String,
 }
 
@@ -272,6 +289,76 @@ pub async fn delete_ignored_word(
     checker.remove_ignored_word(&normalized);
     drop(checker);
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_always_wrong_words(
+    State(state): State<AppState>,
+) -> Result<Json<AlwaysWrongWordsResponse>, ApiError> {
+    let words = db::list_always_wrong_words(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(Json(AlwaysWrongWordsResponse { words }))
+}
+
+pub async fn add_always_wrong_word(
+    State(state): State<AppState>,
+    Json(payload): Json<AddAlwaysWrongWordRequest>,
+) -> Result<StatusCode, ApiError> {
+    let normalized = crate::checker::normalize_ignored_word(&payload.word);
+    if normalized.is_empty() {
+        return Err(ApiError::BadRequest("word is required".to_string()));
+    }
+
+    db::insert_always_wrong_word(state.db_path.as_str(), &normalized)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut checker = state.checker.lock().await;
+    checker.add_always_wrong_word(&normalized);
+    drop(checker);
+    Ok(StatusCode::CREATED)
+}
+
+pub async fn delete_always_wrong_word(
+    State(state): State<AppState>,
+    Path(word): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let normalized = crate::checker::normalize_ignored_word(&word);
+    if normalized.is_empty() {
+        return Err(ApiError::BadRequest("word is required".to_string()));
+    }
+
+    db::delete_always_wrong_word(state.db_path.as_str(), &normalized)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut checker = state.checker.lock().await;
+    checker.remove_always_wrong_word(&normalized);
+    drop(checker);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn export_always_wrong_words(
+    State(state): State<AppState>,
+) -> Result<Json<ExportAlwaysWrongWordsResponse>, ApiError> {
+    let db_words = db::list_always_wrong_words(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut merged: BTreeSet<String> = load_existing_suppression_words(state.always_wrong_path.as_str())?;
+    merged.extend(db_words);
+    let exported_words: Vec<String> = merged.into_iter().collect();
+
+    let mut file_content = String::from("# Words always flagged as errors by Wordfixer.\n");
+    file_content.push_str("# Exported from DB + file merge.\n\n");
+    if !exported_words.is_empty() {
+        file_content.push_str(&exported_words.join("\n"));
+        file_content.push('\n');
+    }
+    fs::write(state.always_wrong_path.as_str(), file_content)
+        .map_err(|e| ApiError::Internal(format!("failed to write always wrong words file: {e}")))?;
+
+    let mut checker = state.checker.lock().await;
+    checker.replace_always_wrong_words(exported_words.clone());
+    drop(checker);
+
+    Ok(Json(ExportAlwaysWrongWordsResponse {
+        exported_count: exported_words.len(),
+        path: state.always_wrong_path.as_ref().to_string(),
+    }))
 }
 
 pub async fn sandbox_check(

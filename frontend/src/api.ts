@@ -1,8 +1,10 @@
 import type {
+  AlwaysWrongWordsResponse,
   ApplyEditResponse,
   ArticleResult,
   AuthStatusResponse,
   CheckResponse,
+  ExportAlwaysWrongWordsResponse,
   ExportIgnoredWordsResponse,
   IgnoredWordsResponse,
   SandboxCheckResponse,
@@ -106,6 +108,47 @@ export async function deleteIgnoredWord(word: string): Promise<void> {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to remove ignored word')
   }
+}
+
+export async function getAlwaysWrongWords(): Promise<AlwaysWrongWordsResponse> {
+  const response = await fetch('/api/always-wrong-words')
+  if (!response.ok) {
+    throw new Error('Failed to load always wrong words')
+  }
+  return response.json()
+}
+
+export async function addAlwaysWrongWord(word: string): Promise<void> {
+  const response = await fetch('/api/always-wrong-words', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to add always wrong word')
+  }
+}
+
+export async function deleteAlwaysWrongWord(word: string): Promise<void> {
+  const response = await fetch(`/api/always-wrong-words/${encodeURIComponent(word)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to remove always wrong word')
+  }
+}
+
+export async function exportAlwaysWrongWords(): Promise<ExportAlwaysWrongWordsResponse> {
+  const response = await fetch('/api/always-wrong-words/export', {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to export always wrong words')
+  }
+  return response.json()
 }
 
 export async function exportIgnoredWords(): Promise<ExportIgnoredWordsResponse> {

@@ -12,6 +12,7 @@ pub struct SpellChecker {
     dict: Dictionary,
     cache: HashMap<String, bool>,
     suppressed_words: HashSet<String>,
+    always_wrong_words: HashSet<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -27,6 +28,7 @@ impl SpellChecker {
         let aff = read_dictionary_text(&dict_dir.join("es_ES.aff"))?;
         let dic = read_dictionary_text(&dict_dir.join("es_ES.dic"))?;
         let suppressed_words = load_suppressed_words(dict_dir)?;
+        let always_wrong_words = load_always_wrong_from_file(dict_dir)?;
 
         let dict = zspell::builder()
             .config_str(&aff)
@@ -38,6 +40,7 @@ impl SpellChecker {
             dict,
             cache: HashMap::new(),
             suppressed_words,
+            always_wrong_words,
         })
     }
 
@@ -47,6 +50,10 @@ impl SpellChecker {
 
         for token in tokens {
             if token.is_link {
+                continue;
+            }
+            if self.always_wrong_words.contains(&token.normalized) {
+                wrong.push(token.normalized.clone());
                 continue;
             }
             if self.should_suppress_unknown(token, &casing_map) {
@@ -105,6 +112,39 @@ impl SpellChecker {
     {
         self.suppressed_words.clear();
         self.add_ignored_words(words);
+    }
+
+    pub fn add_always_wrong_word(&mut self, word: &str) -> bool {
+        let normalized = normalize_ignored_word(word);
+        if normalized.is_empty() {
+            return false;
+        }
+        self.always_wrong_words.insert(normalized)
+    }
+
+    pub fn add_always_wrong_words<I>(&mut self, words: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        for word in words {
+            self.add_always_wrong_word(&word);
+        }
+    }
+
+    pub fn remove_always_wrong_word(&mut self, word: &str) -> bool {
+        let normalized = normalize_ignored_word(word);
+        if normalized.is_empty() {
+            return false;
+        }
+        self.always_wrong_words.remove(&normalized)
+    }
+
+    pub fn replace_always_wrong_words<I>(&mut self, words: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        self.always_wrong_words.clear();
+        self.add_always_wrong_words(words);
     }
 
     fn should_suppress_unknown(
@@ -182,6 +222,28 @@ pub fn suppressions_path(dict_dir: &Path) -> std::path::PathBuf {
         .map(std::path::PathBuf::from);
     let default_path = dict_dir.join("suppressions.txt");
     from_env.unwrap_or(default_path)
+}
+
+pub fn always_wrong_path(dict_dir: &Path) -> std::path::PathBuf {
+    let from_env = std::env::var("WORDFIXER_ALWAYS_WRONG_PATH")
+        .ok()
+        .map(std::path::PathBuf::from);
+    let default_path = dict_dir.join("always_wrong.txt");
+    from_env.unwrap_or(default_path)
+}
+
+fn load_always_wrong_from_file(dict_dir: &Path) -> Result<HashSet<String>, CheckerError> {
+    let path = always_wrong_path(dict_dir);
+    if !path.exists() {
+        return Ok(HashSet::new());
+    }
+    let content = fs::read_to_string(path)?;
+    Ok(content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| line.to_lowercase())
+        .collect())
 }
 
 pub fn normalize_ignored_word(word: &str) -> String {
