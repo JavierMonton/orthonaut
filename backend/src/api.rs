@@ -861,6 +861,7 @@ async fn submit_wiki_edit(
         ("summary", comment),
         ("baserevid", latest_id_str.as_str()),
         ("token", csrf_token.as_str()),
+        ("minor", "true"),
     ];
     let response = wikipedia::wikimedia_send(
         client
