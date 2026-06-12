@@ -36,3 +36,9 @@ frontend/.cache/
 
 # --- Backend / Rust ---
 backend/target/
+
+# --- Local SQLite database (regenerated on first run; may contain OAuth tokens) ---
+backend/wordfixer.db
+backend/wordfixer.db-journal
+backend/wordfixer.db-wal
+backend/wordfixer.db-shm
