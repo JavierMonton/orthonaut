@@ -1,13 +1,14 @@
 SHELL := /bin/bash
 
-.PHONY: help setup backend frontend dev
+.PHONY: help setup backend frontend dev build deploy-prep
 
 help:
 	@echo "Available targets:"
-	@echo "  make setup    - Download dictionaries and install frontend dependencies"
-	@echo "  make backend  - Run backend only (port 3000)"
-	@echo "  make frontend - Run frontend only (port 5173)"
-	@echo "  make dev      - Run backend + frontend in one terminal"
+	@echo "  make setup        - Download dictionaries and install frontend dependencies"
+	@echo "  make backend      - Run backend only (port 3000)"
+	@echo "  make frontend     - Run frontend only (port 5173, with HMR)"
+	@echo "  make dev          - Run backend + frontend in one terminal"
+	@echo "  make build        - Build frontend for production (required before deploying)"
 
 setup:
 	./setup.sh
@@ -18,6 +19,9 @@ backend:
 
 frontend:
 	cd frontend && npm run dev
+
+build:
+	cd frontend && npm run build
 
 dev:
 	@set -euo pipefail; \

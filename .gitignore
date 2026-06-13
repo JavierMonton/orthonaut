@@ -26,15 +26,18 @@ venv/
 
 # --- Frontend / Node ---
 frontend/node_modules/
-frontend/dist/
 frontend/dist-ssr/
 frontend/.vite/
 frontend/.cache/
+# frontend/dist/ is committed — rust-embed embeds it into the release binary at compile time
+!frontend/dist/
+!frontend/dist/**
 
 # --- Orthonaut config (contains secrets) ---
 /orthonaut.toml
 
 # --- Backend / Rust ---
+/target/
 backend/target/
 
 # --- Local SQLite database (regenerated on first run; may contain OAuth tokens) ---

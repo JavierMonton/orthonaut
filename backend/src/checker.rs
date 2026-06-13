@@ -27,12 +27,19 @@ impl SpellChecker {
     pub fn new(dict_dir: &Path) -> Result<Self, CheckerError> {
         let aff = read_dictionary_text(&dict_dir.join("es_ES.aff"))?;
         let dic = read_dictionary_text(&dict_dir.join("es_ES.dic"))?;
+        Self::from_strs(&aff, &dic, dict_dir)
+    }
+
+    /// Initialise from pre-loaded dictionary strings. Used in release builds where the
+    /// Hunspell files are embedded in the binary; `dict_dir` is still used for the
+    /// user-editable suppressions.txt and always_wrong.txt at runtime.
+    pub fn from_strs(aff: &str, dic: &str, dict_dir: &Path) -> Result<Self, CheckerError> {
         let suppressed_words = load_suppressed_words(dict_dir)?;
         let always_wrong_words = load_always_wrong_from_file(dict_dir)?;
 
         let dict = zspell::builder()
-            .config_str(&aff)
-            .dict_str(&dic)
+            .config_str(aff)
+            .dict_str(dic)
             .build()
             .map_err(|e| CheckerError::DictBuild(e.to_string()))?;
 

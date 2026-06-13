@@ -8,8 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
+# dist/ is committed for Toolforge deployment (rust-embed embeds it at compile time)
+!dist/
+!dist/**
 *.local
 
 # Editor directories and files

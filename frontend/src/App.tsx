@@ -6,7 +6,6 @@ import {
   applySearchEdit,
   checkRandomPage,
   checkUrl,
-  deleteAlwaysWrongWord,
   deleteResult,
   exportAlwaysWrongWords,
   exportIgnoredWords,
@@ -252,16 +251,6 @@ function App() {
       setSuccess(`"${word}" will now always be flagged as an error`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add always wrong word')
-    }
-  }
-
-  const handleDeleteAlwaysWrongWord = async (word: string) => {
-    setError(null)
-    try {
-      await deleteAlwaysWrongWord(word)
-      setAlwaysWrongWords((prev) => prev.filter((w) => w !== word))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove always wrong word')
     }
   }
 
