@@ -22,7 +22,7 @@ export default function CheckForm({ url, loading, onUrlChange, onSubmit, onAnaly
           type="url"
           value={url}
           onChange={(event) => onUrlChange(event.target.value)}
-          placeholder="https://es.wikipedia.org/api/rest_v1/page/html/Madrid"
+          placeholder="https://es.wikipedia.org/wiki/Wikipedia:Portada"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 transition focus:ring-2"
           disabled={loading}
           required
