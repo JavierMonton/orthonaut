@@ -14,6 +14,60 @@ mod oauth;
 mod reporter;
 mod wikipedia;
 
+// Release builds: embed Hunspell dictionary files into the binary.
+// suppressions.txt and always_wrong.txt are user-editable and stay on disk at runtime.
+#[cfg(not(debug_assertions))]
+mod dicts {
+    use rust_embed::RustEmbed;
+
+    #[derive(RustEmbed)]
+    #[folder = "dictionaries"]
+    #[include = "es_ES.*"]
+    struct Files;
+
+    fn decode(bytes: &[u8]) -> String {
+        match String::from_utf8(bytes.to_vec()) {
+            Ok(s) => s,
+            Err(_) => bytes.iter().map(|&b| b as char).collect(),
+        }
+    }
+
+    pub fn aff() -> String {
+        decode(&Files::get("es_ES.aff").expect("embedded aff").data)
+    }
+
+    pub fn dic() -> String {
+        decode(&Files::get("es_ES.dic").expect("embedded dic").data)
+    }
+}
+
+// Release builds: embed the compiled frontend into the binary for self-contained deployment.
+#[cfg(not(debug_assertions))]
+mod frontend {
+    use rust_embed::RustEmbed;
+
+    #[derive(RustEmbed)]
+    #[folder = "../frontend/dist"]
+    pub struct Assets;
+
+    pub async fn handler(uri: axum::http::Uri) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        let path = uri.path().trim_start_matches('/');
+        let path = if path.is_empty() { "index.html" } else { path };
+        match Assets::get(path) {
+            Some(content) => {
+                let mime = mime_guess::from_path(path).first_or_octet_stream();
+                ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+            }
+            // SPA fallback: unknown paths → index.html so React Router handles routing
+            None => {
+                let content = Assets::get("index.html").unwrap();
+                ([(axum::http::header::CONTENT_TYPE, "text/html")], content.data).into_response()
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
@@ -23,12 +77,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db_path = std::env::var("ORTHONAUT_DB_PATH").unwrap_or_else(|_| "orthonaut.db".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+
+    let db_path = std::env::var("ORTHONAUT_DB_PATH")
+        .unwrap_or_else(|_| format!("{}/orthonaut.db", home));
     db::init_db(&db_path)?;
 
     let dictionary_dir = std::env::var("ORTHONAUT_DICT_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("dictionaries"));
+        .unwrap_or_else(|_| PathBuf::from(format!("{}/dictionaries", home)));
+
+    // Release: Hunspell files are embedded in the binary — no files to upload.
+    // Debug: load from dictionary_dir on disk (local dev with setup.sh).
+    #[cfg(not(debug_assertions))]
+    let mut checker = checker::SpellChecker::from_strs(&dicts::aff(), &dicts::dic(), &dictionary_dir)?;
+    #[cfg(debug_assertions)]
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
     let ignored_words = db::list_ignored_words(&db_path)?;
     checker.add_ignored_words(ignored_words);
@@ -41,8 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
-    let config_path = std::env::var("ORTHONAUT_CONFIG_PATH").unwrap_or_else(|_| "../orthonaut.toml".to_string());
-    let config_path = Path::new(&config_path);
+    let config_path_str = std::env::var("ORTHONAUT_CONFIG_PATH")
+        .unwrap_or_else(|_| format!("{}/orthonaut.toml", home));
+    let config_path = Path::new(&config_path_str);
     let app_config = config::OrthonautConfig::load(config_path)?;
     tracing::info!(
         path = %app_config.path.display(),
@@ -106,7 +170,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    // Release: serve embedded frontend; Debug: serve from disk (falls back to 404 if not built)
+    #[cfg(not(debug_assertions))]
+    let app = app.fallback(frontend::handler);
+
+    #[cfg(debug_assertions)]
+    let app = {
+        use tower_http::services::{ServeDir, ServeFile};
+        let dist = std::env::var("ORTHONAUT_STATIC_DIR")
+            .unwrap_or_else(|_| "../frontend/dist".to_string());
+        app.fallback_service(
+            ServeDir::new(&dist)
+                .not_found_service(ServeFile::new(format!("{}/index.html", dist))),
+        )
+    };
+
+    let port: u16 = std::env::var("PORT")
+        .unwrap_or_else(|_| "3000".to_string())
+        .parse()
+        .unwrap_or(3000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("backend listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
