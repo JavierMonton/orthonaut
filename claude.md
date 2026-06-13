@@ -1,8 +1,8 @@
-# Ortobot Project Guide
+# Orthonaut Project Guide
 
 ## What this project is
 
-Ortobot is a self-hosted full-stack app that checks Spanish orthography on Wikipedia articles.
+Orthonaut is a self-hosted full-stack app that checks Spanish orthography on Wikipedia articles.
 
 You give the app a URL, and it:
 
@@ -51,7 +51,7 @@ Data flow:
 ## Directory structure
 
 ```text
-ortobot/
+orthonaut/
 ├── backend/
 │   ├── Cargo.toml
 │   ├── dictionaries/
@@ -133,7 +133,7 @@ ortobot/
 
 ## Database schema
 
-SQLite file is `backend/ortobot.db` by default.
+SQLite file is `backend/orthonaut.db` by default.
 
 Table: `articles`
 
@@ -166,11 +166,11 @@ To enable the "Apply edit" feature, register an OAuth 2.0 consumer on Wikimedia:
 
 1. Go to `https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration/propose`
 2. Fill in:
-   - Application name: `Ortobot` (or any name)
+   - Application name: `Orthonaut` (or any name)
    - Allowed grants: `Edit existing pages` + `Basic rights`
    - Callback URL: `http://localhost:3000/api/auth/callback`
 3. You receive a `client_id` and `client_secret`.
-4. Add to `ortobot.toml`:
+4. Add to `orthonaut.toml`:
 
 ```toml
 [oauth]

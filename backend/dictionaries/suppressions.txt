@@ -1,4 +1,4 @@
-# Words suppressed by Wordfixer.
+# Words suppressed by Orthonaut.
 # Exported from DB + file merge.
 
 abacial

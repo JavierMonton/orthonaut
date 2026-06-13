@@ -258,7 +258,7 @@ export default function ResultRow({
                         <div className="mt-3 border-t border-slate-200 pt-3">
                           {!oauthConfigured ? (
                             <p className="text-slate-400 italic">
-                              Add <code>[oauth]</code> to wordfixer.toml to enable editing.
+                              Add <code>[oauth]</code> to orthonaut.toml to enable editing.
                             </p>
                           ) : edit?.ok ? (
                             <p className="text-green-700">

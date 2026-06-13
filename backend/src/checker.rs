@@ -217,7 +217,7 @@ fn load_suppressed_words(dict_dir: &Path) -> Result<HashSet<String>, CheckerErro
 }
 
 pub fn suppressions_path(dict_dir: &Path) -> std::path::PathBuf {
-    let from_env = std::env::var("WORDFIXER_SUPPRESSIONS_PATH")
+    let from_env = std::env::var("ORTHONAUT_SUPPRESSIONS_PATH")
         .ok()
         .map(std::path::PathBuf::from);
     let default_path = dict_dir.join("suppressions.txt");
@@ -225,7 +225,7 @@ pub fn suppressions_path(dict_dir: &Path) -> std::path::PathBuf {
 }
 
 pub fn always_wrong_path(dict_dir: &Path) -> std::path::PathBuf {
-    let from_env = std::env::var("WORDFIXER_ALWAYS_WRONG_PATH")
+    let from_env = std::env::var("ORTHONAUT_ALWAYS_WRONG_PATH")
         .ok()
         .map(std::path::PathBuf::from);
     let default_path = dict_dir.join("always_wrong.txt");

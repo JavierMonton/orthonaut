@@ -9,6 +9,6 @@ Because the word can appear in multiple places, by default only the first paragr
 
 Also, I want you to research about how edits can be made to wikipedia, as the next feature I want is mixed with this way of showing the paragraphs. 
 
-The next feature is to be able to edit the Wikipedia page directly from the Ortobot interface. This will require a small input box to write the replacement of the word and a button like "apply edit".
+The next feature is to be able to edit the Wikipedia page directly from the Orthonaut interface. This will require a small input box to write the replacement of the word and a button like "apply edit".
 I guess this will also require some permissions from the Wikipedia user account to be able to edit the page on behalf of the user, but I don't know how that works, you need to investigate it on official Wikipedia or Wikimedia docs.
 

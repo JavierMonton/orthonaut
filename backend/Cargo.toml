@@ -1,5 +1,5 @@
 [package]
-name = "wordfixer-backend"
+name = "orthonaut-backend"
 version = "0.1.0"
 edition = "2021"
 

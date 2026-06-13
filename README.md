@@ -1,6 +1,6 @@
-# Ortobot
+# Orthonaut
 
-Ortobot is a self-hosted full-stack app to check Spanish orthography on Wikipedia pages.
+Orthonaut is a self-hosted full-stack app to check Spanish orthography on Wikipedia pages.
 
 ## Stack
 

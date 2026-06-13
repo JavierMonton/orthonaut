@@ -1,4 +1,4 @@
-# Ortobot — Requirements & Architecture Plan
+# Orthonaut — Requirements & Architecture Plan
 
 ## Purpose
 
@@ -97,7 +97,7 @@ fetch when it becomes available. The architecture is designed so that only
 ### Module breakdown
 
 ```
-ortobot/
+orthonaut/
 ├── Cargo.toml
 ├── dictionaries/
 │   ├── es_ES.aff          # Spanish Hunspell affix rules

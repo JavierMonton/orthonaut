@@ -18,15 +18,15 @@ mod wikipedia;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "wordfixer_backend=info,tower_http=info".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "orthonaut_backend=info,tower_http=info".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db_path = std::env::var("WORDFIXER_DB_PATH").unwrap_or_else(|_| "wordfixer.db".to_string());
+    let db_path = std::env::var("ORTHONAUT_DB_PATH").unwrap_or_else(|_| "orthonaut.db".to_string());
     db::init_db(&db_path)?;
 
-    let dictionary_dir = std::env::var("WORDFIXER_DICT_DIR")
+    let dictionary_dir = std::env::var("ORTHONAUT_DICT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("dictionaries"));
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
@@ -41,12 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
-    let config_path = std::env::var("WORDFIXER_CONFIG_PATH").unwrap_or_else(|_| "../wordfixer.toml".to_string());
+    let config_path = std::env::var("ORTHONAUT_CONFIG_PATH").unwrap_or_else(|_| "../orthonaut.toml".to_string());
     let config_path = Path::new(&config_path);
-    let app_config = config::WordfixerConfig::load(config_path)?;
+    let app_config = config::OrthonautConfig::load(config_path)?;
     tracing::info!(
         path = %app_config.path.display(),
-        "loaded Wordfixer config"
+        "loaded Orthonaut config"
     );
 
     let wikimedia_ua = wikipedia::wikimedia_http_user_agent(&app_config.wikimedia_contact);

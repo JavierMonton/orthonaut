@@ -229,7 +229,7 @@ pub async fn export_ignored_words(
     merged.extend(db_words);
     let exported_words: Vec<String> = merged.into_iter().collect();
 
-    let mut file_content = String::from("# Words suppressed by Wordfixer.\n");
+    let mut file_content = String::from("# Words suppressed by Orthonaut.\n");
     file_content.push_str("# Exported from DB + file merge.\n\n");
     if !exported_words.is_empty() {
         file_content.push_str(&exported_words.join("\n"));
@@ -342,7 +342,7 @@ pub async fn export_always_wrong_words(
     merged.extend(db_words);
     let exported_words: Vec<String> = merged.into_iter().collect();
 
-    let mut file_content = String::from("# Words always flagged as errors by Wordfixer.\n");
+    let mut file_content = String::from("# Words always flagged as errors by Orthonaut.\n");
     file_content.push_str("# Exported from DB + file merge.\n\n");
     if !exported_words.is_empty() {
         file_content.push_str(&exported_words.join("\n"));
@@ -1139,7 +1139,7 @@ mod tests {
             .expect("valid clock")
             .as_nanos();
         std::env::temp_dir()
-            .join(format!("wordfixer-api-test-{nanos}.db"))
+            .join(format!("orthonaut-api-test-{nanos}.db"))
             .to_string_lossy()
             .to_string()
     }
@@ -1154,6 +1154,7 @@ mod tests {
         AppState {
             db_path: Arc::new(db_path),
             suppressions_path: Arc::new("dictionaries/suppressions.txt".to_string()),
+            always_wrong_path: Arc::new("dictionaries/always_wrong.txt".to_string()),
             http_client: reqwest::Client::new(),
             checker: Arc::new(Mutex::new(checker)),
             wikimedia_contact: Arc::new("wikipedia:es; User:Test".to_string()),

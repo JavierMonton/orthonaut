@@ -1,5 +1,5 @@
-# Wordfixer runtime configuration (see WORDFIXER_CONFIG_PATH env var to override path).
-# Copy this file to wordfixer.toml and fill in your values.
+# Orthonaut runtime configuration (see ORTHONAUT_CONFIG_PATH env var to override path).
+# Copy this file to orthonaut.toml and fill in your values.
 
 # Wikimedia User-Agent / Api-User-Agent policy contact — URL, email, or wiki user form per:
 # https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy

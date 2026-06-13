@@ -320,7 +320,7 @@ function App() {
       <section className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="mb-1 text-2xl font-bold text-slate-900">Wordfixer</h1>
+            <h1 className="mb-1 text-2xl font-bold text-slate-900">Orthonaut</h1>
             <p className="text-sm text-slate-600">
               Check Spanish orthography from Wikipedia URLs or manual text/HTML sandbox input.
             </p>
@@ -346,7 +346,7 @@ function App() {
               )
             ) : (
               <span
-                title="Add [oauth] section to wordfixer.toml to enable editing"
+                title="Add [oauth] section to orthonaut.toml to enable editing"
                 className="cursor-help rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
               >
                 Editing not configured

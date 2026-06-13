@@ -292,7 +292,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("valid clock")
             .as_nanos();
-        std::env::temp_dir().join(format!("wordfixer-test-{nanos}.db"))
+        std::env::temp_dir().join(format!("orthonaut-test-{nanos}.db"))
     }
 
     #[test]

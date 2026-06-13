@@ -1,4 +1,4 @@
-# Words always flagged as errors by Wordfixer.
+# Words always flagged as errors by Orthonaut.
 # Exported from DB + file merge.
 
 guió

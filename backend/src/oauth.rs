@@ -30,7 +30,7 @@ pub struct AuthStatusResponse {
 
 pub async fn auth_login(State(state): State<AppState>) -> impl IntoResponse {
     let Some(ref oauth_config) = state.oauth_config else {
-        return (StatusCode::BAD_REQUEST, "OAuth is not configured in wordfixer.toml").into_response();
+        return (StatusCode::BAD_REQUEST, "OAuth is not configured in orthonaut.toml").into_response();
     };
 
     if oauth_config.token.is_some() {

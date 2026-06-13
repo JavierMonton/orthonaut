@@ -5,9 +5,9 @@ use std::{
 
 use serde::Deserialize;
 
-/// Values loaded once at startup from `wordfixer.toml` (or `WORDFIXER_CONFIG_PATH`).
+/// Values loaded once at startup from `orthonaut.toml` (or `ORTHONAUT_CONFIG_PATH`).
 #[derive(Debug, Clone)]
-pub struct WordfixerConfig {
+pub struct OrthonautConfig {
     pub path: PathBuf,
     pub wikimedia_contact: String,
     pub oauth: Option<OAuthConfig>,
@@ -22,7 +22,7 @@ pub struct OAuthConfig {
 }
 
 #[derive(Debug, Deserialize)]
-struct WordfixerConfigFile {
+struct OrthonautConfigFile {
     wikimedia_contact: String,
     oauth: Option<OAuthConfig>,
 }
@@ -44,13 +44,13 @@ pub enum ConfigError {
     EmptyContact { path: PathBuf },
 }
 
-impl WordfixerConfig {
+impl OrthonautConfig {
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let raw = fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
             source,
         })?;
-        let file: WordfixerConfigFile = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
+        let file: OrthonautConfigFile = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
             path: path.to_path_buf(),
             source,
         })?;
