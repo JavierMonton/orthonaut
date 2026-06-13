@@ -22,7 +22,6 @@ mod dicts {
 
     #[derive(RustEmbed)]
     #[folder = "dictionaries"]
-    #[include = "es_ES.*"]
     struct Files;
 
     fn decode(bytes: &[u8]) -> String {
