@@ -24,6 +24,8 @@ pub enum CheckerError {
 }
 
 impl SpellChecker {
+    // Used by local dev (debug builds) and tests; release builds use `from_strs` with embedded data.
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub fn new(dict_dir: &Path) -> Result<Self, CheckerError> {
         let aff = read_dictionary_text(&dict_dir.join("es_ES.aff"))?;
         let dic = read_dictionary_text(&dict_dir.join("es_ES.dic"))?;
@@ -195,6 +197,7 @@ impl SpellChecker {
     }
 }
 
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 fn read_dictionary_text(path: &Path) -> Result<String, CheckerError> {
     let bytes = fs::read(path)?;
     match String::from_utf8(bytes.clone()) {

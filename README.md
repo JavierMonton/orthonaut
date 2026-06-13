@@ -57,14 +57,25 @@ add `https://orthonaut.toolforge.org/api/auth/callback` as an allowed redirect U
 **2. Upload the config to Toolforge**
 
 The Spanish dictionary files are embedded in the binary — no upload needed.
-Only the config file (which contains secrets) needs to be placed on Toolforge:
+Only the config file (which contains secrets) needs to be placed on Toolforge.
+Write it directly from the SSH session to avoid any path or permission uncertainty:
 
 ```bash
-ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org \
-    "become orthonaut && mkdir -p ~/dictionaries"
-scp -i ~/.ssh/<your-key> orthonaut.toml \
-    <your-username>@login.toolforge.org:/data/project/orthonaut/orthonaut.toml
+ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
+become orthonaut
+mkdir -p ~/dictionaries
+cat > ~/orthonaut.toml << 'EOF'
+wikimedia_contact = "https://es.wikipedia.org/wiki/User:<your-wikipedia-username>"
+
+[oauth]
+client_id     = "..."
+client_secret = "..."
+redirect_uri  = "https://orthonaut.toolforge.org/api/auth/callback"
+EOF
+exit
 ```
+
+Omit the `[oauth]` section entirely if not yet configured — the app runs without it.
 
 **3. First deploy**
 
@@ -79,7 +90,9 @@ Then on Toolforge:
 ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
 become orthonaut
 toolforge build start https://github.com/JavierMonton/orthonaut
-toolforge webservice buildservice start
+# --mount all keeps the tool home ($HOME) mounted, where the config, SQLite DB,
+# and word lists live. Required — the app reads ~/orthonaut.toml at startup.
+toolforge webservice buildservice start --mount all
 ```
 
 ### Subsequent deploys

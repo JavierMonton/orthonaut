@@ -14,8 +14,10 @@ mod oauth;
 mod reporter;
 mod wikipedia;
 
-// Release builds: embed Hunspell dictionary files into the binary.
-// suppressions.txt and always_wrong.txt are user-editable and stay on disk at runtime.
+// Release builds: embed the whole dictionaries/ folder into the binary.
+// es_ES.{aff,dic} are read straight from here. suppressions.txt / always_wrong.txt
+// are seeded onto disk on first boot (see seed_word_lists) so they stay user-editable
+// and survive exports across restarts.
 #[cfg(not(debug_assertions))]
 mod dicts {
     use rust_embed::RustEmbed;
@@ -37,6 +39,10 @@ mod dicts {
 
     pub fn dic() -> String {
         decode(&Files::get("es_ES.dic").expect("embedded dic").data)
+    }
+
+    pub fn raw(name: &str) -> Option<Vec<u8>> {
+        Files::get(name).map(|f| f.data.into_owned())
     }
 }
 
@@ -87,7 +93,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| PathBuf::from(format!("{}/dictionaries", home)));
 
     // Release: Hunspell files are embedded in the binary — no files to upload.
-    // Debug: load from dictionary_dir on disk (local dev with setup.sh).
+    // Seed the curated word lists onto disk on first boot so they're loaded by the
+    // checker below and remain editable / persisted across exports.
+    #[cfg(not(debug_assertions))]
+    {
+        std::fs::create_dir_all(&dictionary_dir).ok();
+        for name in ["suppressions.txt", "always_wrong.txt"] {
+            let dest = dictionary_dir.join(name);
+            if !dest.exists() {
+                if let Some(bytes) = dicts::raw(name) {
+                    if let Err(e) = std::fs::write(&dest, bytes) {
+                        tracing::warn!(file = name, error = %e, "failed to seed word list");
+                    } else {
+                        tracing::info!(file = name, "seeded word list to disk");
+                    }
+                }
+            }
+        }
+    }
+
+    // Release: build dictionary from embedded data. Debug: load from disk (local dev with setup.sh).
     #[cfg(not(debug_assertions))]
     let mut checker = checker::SpellChecker::from_strs(&dicts::aff(), &dicts::dic(), &dictionary_dir)?;
     #[cfg(debug_assertions)]

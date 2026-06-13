@@ -1,1 +1,1 @@
-web: orthonaut-backend
+web: /workspace/bin/orthonaut-backend
