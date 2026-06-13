@@ -209,10 +209,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     };
 
+    // Toolforge probes on 8000 and does not set PORT; local dev uses 3000 (Vite proxies to it).
+    let default_port: u16 = if cfg!(debug_assertions) { 3000 } else { 8000 };
     let port: u16 = std::env::var("PORT")
-        .unwrap_or_else(|_| "3000".to_string())
-        .parse()
-        .unwrap_or(3000);
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(default_port);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("backend listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;

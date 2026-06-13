@@ -77,7 +77,21 @@ exit
 
 Omit the `[oauth]` section entirely if not yet configured — the app runs without it.
 
-**3. First deploy**
+**3. Set environment variables**
+
+Inside the buildpack container `$HOME` is **not** the tool's NFS home, so the app must be
+pointed at absolute paths. Set these once (they persist across deploys):
+
+```bash
+toolforge envvars create ORTHONAUT_CONFIG_PATH /data/project/orthonaut/orthonaut.toml
+toolforge envvars create ORTHONAUT_DB_PATH /data/project/orthonaut/orthonaut.db
+toolforge envvars create ORTHONAUT_DICT_DIR /data/project/orthonaut/dictionaries
+```
+
+Without these, the app can't find its config (crash loop / "no healthy upstream") and the
+SQLite DB would be written to ephemeral storage and lost on every restart.
+
+**4. First deploy**
 
 ```bash
 make deploy-prep   # builds frontend, stages frontend/dist/ for commit
@@ -90,10 +104,13 @@ Then on Toolforge:
 ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
 become orthonaut
 toolforge build start https://github.com/JavierMonton/orthonaut
-# --mount all keeps the tool home ($HOME) mounted, where the config, SQLite DB,
-# and word lists live. Required — the app reads ~/orthonaut.toml at startup.
+# --mount all keeps the tool's NFS storage (/data/project/orthonaut) mounted, where the
+# config, SQLite DB, and word lists live. Required for the env var paths above to resolve.
 toolforge webservice buildservice start --mount all
 ```
+
+Check `toolforge webservice logs` — a healthy start shows `loaded Orthonaut config`
+followed by `backend listening on 0.0.0.0:8000`.
 
 ### Subsequent deploys
 
