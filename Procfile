@@ -1,1 +1,1 @@
-web: /workspace/bin/orthonaut-backend
+web: /workspace/target/release/orthonaut-backend
