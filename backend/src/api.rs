@@ -1,12 +1,12 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fs,
     sync::Arc,
 };
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -33,7 +33,24 @@ pub struct AppState {
     pub checker: Arc<Mutex<SpellChecker>>,
     pub wikimedia_contact: Arc<String>,
     pub oauth_config: Option<Arc<OAuthConfig>>,
-    pub oauth_pending_state: Arc<Mutex<Option<String>>>,
+    /// Maps pre-session ID → OAuth state string for in-flight login flows.
+    pub oauth_pending_state: Arc<Mutex<HashMap<String, String>>>,
+}
+
+pub fn extract_session_id(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|part| {
+                let (k, v) = part.trim().split_once('=')?;
+                if k.trim() == "orthonaut_session" {
+                    Some(v.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        })
 }
 
 const SEARCH_MAX_RESULTS: usize = 10;
@@ -419,6 +436,7 @@ pub async fn get_word_contexts(
 
 pub async fn apply_edit(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<ApplyEditRequest>,
 ) -> Result<Json<ApplyEditResponse>, ApiError> {
     if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
@@ -432,7 +450,8 @@ pub async fn apply_edit(
     let title = extract_title_from_wiki_url(&article.page_url)
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
-    let access_token = resolve_access_token(&state).await?;
+    let session_id = extract_session_id(&headers);
+    let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
     let new_revision = perform_wiki_edit(
         &state.http_client,
         &title,
@@ -572,6 +591,7 @@ pub async fn get_search_contexts(
 
 pub async fn apply_search_edit(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<ApplySearchEditRequest>,
 ) -> Result<Json<ApplyEditResponse>, ApiError> {
     if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
@@ -582,7 +602,8 @@ pub async fn apply_search_edit(
     let title = extract_title_from_wiki_url(&display_url)
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
-    let access_token = resolve_access_token(&state).await?;
+    let session_id = extract_session_id(&headers);
+    let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
     let new_revision = perform_wiki_edit(
         &state.http_client,
         &title,
@@ -597,7 +618,7 @@ pub async fn apply_search_edit(
     Ok(Json(ApplyEditResponse { ok: true, new_revision }))
 }
 
-async fn resolve_access_token(state: &AppState) -> Result<String, ApiError> {
+async fn resolve_access_token(state: &AppState, session_id: Option<&str>) -> Result<String, ApiError> {
     let oauth_config = state
         .oauth_config
         .as_ref()
@@ -607,7 +628,10 @@ async fn resolve_access_token(state: &AppState) -> Result<String, ApiError> {
         return Ok(static_token.clone());
     }
 
-    let token = db::get_oauth_token(state.db_path.as_str())
+    let session_id = session_id
+        .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
+
+    let token = db::get_oauth_token(state.db_path.as_str(), session_id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
 
@@ -629,6 +653,7 @@ async fn resolve_access_token(state: &AppState) -> Result<String, ApiError> {
         .to_rfc3339();
         db::store_oauth_token(
             state.db_path.as_str(),
+            session_id,
             &new_token.access_token,
             new_token.refresh_token.as_deref(),
             &expires_at,

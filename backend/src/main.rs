@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
 
 use axum::{routing::{delete, get, post}, Router};
 use tokio::sync::Mutex;
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         checker: Arc::new(Mutex::new(checker)),
         wikimedia_contact: Arc::new(app_config.wikimedia_contact),
         oauth_config,
-        oauth_pending_state: Arc::new(Mutex::new(None)),
+        oauth_pending_state: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()

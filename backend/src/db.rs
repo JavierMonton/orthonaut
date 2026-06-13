@@ -14,6 +14,17 @@ pub struct ArticleRecord {
 
 pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
+
+    // Migrate old single-row oauth_tokens table (id=1 constraint) to per-session schema.
+    let has_session_col: bool = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('oauth_tokens') WHERE name = 'session_id'",
+        [],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
+    if !has_session_col {
+        conn.execute("DROP TABLE IF EXISTS oauth_tokens", [])?;
+    }
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS articles (
@@ -33,7 +44,7 @@ pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS oauth_tokens (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            session_id TEXT PRIMARY KEY,
             access_token TEXT NOT NULL,
             refresh_token TEXT,
             expires_at TEXT NOT NULL,
@@ -142,6 +153,7 @@ pub struct OAuthToken {
 
 pub fn store_oauth_token(
     db_path: &str,
+    session_id: &str,
     access_token: &str,
     refresh_token: Option<&str>,
     expires_at: &str,
@@ -150,25 +162,25 @@ pub fn store_oauth_token(
     let created_at = Utc::now().to_rfc3339();
     conn.execute(
         r#"
-        INSERT INTO oauth_tokens (id, access_token, refresh_token, expires_at, created_at)
-        VALUES (1, ?1, ?2, ?3, ?4)
-        ON CONFLICT(id) DO UPDATE SET
+        INSERT INTO oauth_tokens (session_id, access_token, refresh_token, expires_at, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(session_id) DO UPDATE SET
             access_token = excluded.access_token,
             refresh_token = excluded.refresh_token,
             expires_at = excluded.expires_at,
             created_at = excluded.created_at
         "#,
-        params![access_token, refresh_token, expires_at, created_at],
+        params![session_id, access_token, refresh_token, expires_at, created_at],
     )?;
     Ok(())
 }
 
-pub fn get_oauth_token(db_path: &str) -> rusqlite::Result<Option<OAuthToken>> {
+pub fn get_oauth_token(db_path: &str, session_id: &str) -> rusqlite::Result<Option<OAuthToken>> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT access_token, refresh_token, expires_at FROM oauth_tokens WHERE id = 1",
+        "SELECT access_token, refresh_token, expires_at FROM oauth_tokens WHERE session_id = ?1",
     )?;
-    let mut rows = stmt.query_map([], |row| {
+    let mut rows = stmt.query_map(params![session_id], |row| {
         Ok(OAuthToken {
             access_token: row.get(0)?,
             refresh_token: row.get(1)?,
@@ -178,9 +190,9 @@ pub fn get_oauth_token(db_path: &str) -> rusqlite::Result<Option<OAuthToken>> {
     rows.next().transpose()
 }
 
-pub fn delete_oauth_token(db_path: &str) -> rusqlite::Result<usize> {
+pub fn delete_oauth_token(db_path: &str, session_id: &str) -> rusqlite::Result<usize> {
     let conn = Connection::open(db_path)?;
-    conn.execute("DELETE FROM oauth_tokens WHERE id = 1", [])
+    conn.execute("DELETE FROM oauth_tokens WHERE session_id = ?1", params![session_id])
 }
 
 pub fn insert_ignored_word(db_path: &str, word: &str) -> rusqlite::Result<()> {
