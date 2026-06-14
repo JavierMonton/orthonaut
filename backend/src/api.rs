@@ -691,7 +691,10 @@ async fn perform_wiki_edit(
         client,
         title,
         &new_wikitext,
-        &format!("Corrección ortográfica: «{}» → «{}»", word, replacement),
+        &format!(
+            "Corrección ortográfica: «{}» → «{}» (hecho con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]])",
+            word, replacement
+        ),
         latest_id,
         access_token,
         wikimedia_contact,
