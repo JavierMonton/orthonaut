@@ -11,6 +11,9 @@ pub struct OrthonautConfig {
     pub path: PathBuf,
     pub wikimedia_contact: String,
     pub oauth: Option<OAuthConfig>,
+    /// When set, Orthonaut reads/writes its word lists from this Wikipedia page title
+    /// (e.g. `Usuario:Jmlarraz/Orthonaut/Palabras`) instead of local files. Absent → local-file mode.
+    pub wordlist_page: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -25,6 +28,7 @@ pub struct OAuthConfig {
 struct OrthonautConfigFile {
     wikimedia_contact: String,
     oauth: Option<OAuthConfig>,
+    wordlist_page: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -62,10 +66,16 @@ impl OrthonautConfig {
             });
         }
 
+        let wordlist_page = file
+            .wordlist_page
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty());
+
         Ok(Self {
             path: path.to_path_buf(),
             wikimedia_contact,
             oauth: file.oauth,
+            wordlist_page,
         })
     }
 }

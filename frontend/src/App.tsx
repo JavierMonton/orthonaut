@@ -41,6 +41,8 @@ function App() {
   const [alwaysWrongWords, setAlwaysWrongWords] = useState<string[]>([])
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [oauthConfigured, setOauthConfigured] = useState(false)
+  const [wikipediaWordlists, setWikipediaWordlists] = useState(false)
+  const [pendingValidExports, setPendingValidExports] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
@@ -62,6 +64,7 @@ function App() {
         setAlwaysWrongWords(alwaysWrongResponse.words)
         setIsLoggedIn(authStatus.logged_in)
         setOauthConfigured(authStatus.oauth_configured)
+        setWikipediaWordlists(authStatus.wikipedia_wordlists)
 
         const params = new URLSearchParams(window.location.search)
         if (params.get('auth') === 'success') {
@@ -192,6 +195,7 @@ function App() {
           misspelled_count: filtered.length,
         }
       })
+      setPendingValidExports((prev) => prev + 1)
       setSuccess(`"${normalized}" was added as a valid word`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save valid word')
@@ -232,7 +236,12 @@ function App() {
     setSuccess(null)
     try {
       const response = await exportIgnoredWords()
-      setSuccess(`Exported ${response.exported_count} ignored words to ${response.path}`)
+      setPendingValidExports(0)
+      if (wikipediaWordlists) {
+        setSuccess(`Exported ${response.exported_count} valid words to ${response.path}`)
+      } else {
+        setSuccess(`Exported ${response.exported_count} ignored words to ${response.path}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export ignored words')
     } finally {
@@ -394,19 +403,38 @@ function App() {
               onAnalyzeRandom={handleRandomSubmit}
             />
             <div className="mt-3 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => void handleExportIgnoredWords()}
-                disabled={loading}
-                className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Export ignored words to file
-              </button>
-              <AlwaysWrongWordsManager
-                count={alwaysWrongWords.length}
-                onAdd={handleAddAlwaysWrongWord}
-                onExport={handleExportAlwaysWrongWords}
-              />
+              {wikipediaWordlists ? (
+                <button
+                  type="button"
+                  onClick={() => void handleExportIgnoredWords()}
+                  disabled={loading || !isLoggedIn || pendingValidExports === 0}
+                  title={
+                    isLoggedIn
+                      ? 'Exporta las nuevas palabras válidas a la página oficial de Wikipedia.'
+                      : 'Inicia sesión en Wikipedia para exportar las palabras válidas.'
+                  }
+                  className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Export valid words to Wikipedia
+                  {pendingValidExports > 0 ? ` (${pendingValidExports})` : ''}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleExportIgnoredWords()}
+                    disabled={loading}
+                    className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Export ignored words to file
+                  </button>
+                  <AlwaysWrongWordsManager
+                    count={alwaysWrongWords.length}
+                    onAdd={handleAddAlwaysWrongWord}
+                    onExport={handleExportAlwaysWrongWords}
+                  />
+                </>
+              )}
             </div>
           </section>
 

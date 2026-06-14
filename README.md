@@ -35,6 +35,44 @@ token         = "..."  # optional: skip OAuth flow locally
 `orthonaut.toml` contains secrets and is **not** committed to git — it must be created
 manually wherever the app runs (see the Toolforge section below).
 
+### Word lists: local files vs. Wikipedia
+
+Orthonaut keeps two word lists — **valid words** (false positives to suppress) and
+**always-wrong words** (always flagged). By default both live in local files
+(`suppressions.txt` / `always_wrong.txt`) and the UI lets you manage both, exporting each to
+its file.
+
+Set the optional `wordlist_page` key to back the lists with a Wikipedia page instead
+(Replacer-style), recommended for production:
+
+```toml
+wordlist_page = "Usuario:Jmlarraz/Orthonaut/Palabras"
+```
+
+When `wordlist_page` is set:
+
+- Both lists are **read** from that page at startup. The "add wrong words" input is hidden —
+  the always-wrong list is managed entirely on-wiki.
+- The "Valid word" button still works; new valid words are buffered locally until you click
+  **Export valid words to Wikipedia**, which **requires you to be logged in** (the edit is made
+  with your account).
+- Export re-reads the page and **merges** before writing, so words anyone added to the page
+  manually are never lost. Only the valid-words block is written; the always-wrong block is
+  left untouched.
+
+Create the page with free text plus the two sentinel blocks below (markers must match exactly,
+one lowercase word per line; anything outside the markers is ignored and safe for docs):
+
+```
+<!-- ORTHONAUT:VALIDAS:START -->
+superestrella
+<!-- ORTHONAUT:VALIDAS:END -->
+
+<!-- ORTHONAUT:INCORRECTAS:START -->
+concecuencia
+<!-- ORTHONAUT:INCORRECTAS:END -->
+```
+
 Paths and the port can be overridden with environment variables:
 
 | Variable | Default (debug / release) | Description |
@@ -68,8 +106,12 @@ become orthonaut
 ```bash
 cat > ~/orthonaut.toml << 'EOF'
 wikimedia_contact = "https://es.wikipedia.org/wiki/User:<your-wikipedia-username>"
+wordlist_page     = "Usuario:Jmlarraz/Orthonaut/Palabras"
 EOF
 ```
+
+`wordlist_page` makes production read/write the word lists from that Wikipedia page (see
+[Word lists](#word-lists-local-files-vs-wikipedia) above); omit it to use local files.
 
 To enable Wikipedia editing, add an `[oauth]` section with a `redirect_uri` of
 `https://orthonaut.toolforge.org/api/auth/callback` (register it first at the

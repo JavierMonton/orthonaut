@@ -48,6 +48,7 @@ export type AuthStatusResponse = {
   logged_in: boolean
   expires_at: string | null
   oauth_configured: boolean
+  wikipedia_wordlists: boolean
 }
 
 export type ApplyEditResponse = {

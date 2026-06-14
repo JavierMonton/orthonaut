@@ -53,6 +53,8 @@ pub struct AuthStatusResponse {
     pub logged_in: bool,
     pub expires_at: Option<String>,
     pub oauth_configured: bool,
+    /// True when word lists are backed by a Wikipedia page instead of local files.
+    pub wikipedia_wordlists: bool,
 }
 
 pub async fn auth_login(
@@ -257,12 +259,14 @@ pub async fn auth_status(
     headers: HeaderMap,
 ) -> Json<AuthStatusResponse> {
     let oauth_configured = state.oauth_config.is_some();
+    let wikipedia_wordlists = state.wordlist_page.is_some();
 
     if state.oauth_config.as_ref().and_then(|c| c.token.as_ref()).is_some() {
         return Json(AuthStatusResponse {
             logged_in: true,
             expires_at: None,
             oauth_configured,
+            wikipedia_wordlists,
         });
     }
 
@@ -271,6 +275,7 @@ pub async fn auth_status(
             logged_in: false,
             expires_at: None,
             oauth_configured,
+            wikipedia_wordlists,
         });
     };
 
@@ -279,11 +284,13 @@ pub async fn auth_status(
             logged_in: true,
             expires_at: Some(token.expires_at),
             oauth_configured,
+            wikipedia_wordlists,
         }),
         _ => Json(AuthStatusResponse {
             logged_in: false,
             expires_at: None,
             oauth_configured,
+            wikipedia_wordlists,
         }),
     }
 }
