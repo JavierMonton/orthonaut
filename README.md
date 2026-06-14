@@ -8,16 +8,15 @@ Orthonaut is a self-hosted full-stack app to check Spanish orthography on Wikipe
 - Frontend: React + Tailwind CSS + Headless UI
 - Database: SQLite
 
-## Quick start
+## Local development
 
 ```bash
-make setup  # download dictionaries + npm install
-make dev    # start backend (port 3000) + frontend (port 5173)
+make dev
 ```
 
-The frontend runs on `http://localhost:5173` and proxies API calls to `http://localhost:3000`.
-
-See `make help` for all available targets.
+Starts the backend on `http://localhost:3000` and the frontend on `http://localhost:5173`
+(the frontend proxies API calls to the backend). On first run it downloads the dictionaries
+and installs frontend dependencies automatically.
 
 ## Configuration
 
@@ -33,54 +32,52 @@ redirect_uri  = "http://localhost:5173/api/auth/callback"
 token         = "..."  # optional: skip OAuth flow locally
 ```
 
-The config file path can be overridden with `ORTHONAUT_CONFIG_PATH`. Other env vars:
+`orthonaut.toml` contains secrets and is **not** committed to git — it must be created
+manually wherever the app runs (see the Toolforge section below).
 
-| Variable | Default | Description |
+Paths and the port can be overridden with environment variables:
+
+| Variable | Default (debug / release) | Description |
 |---|---|---|
-| `PORT` | `3000` | Port the backend listens on |
-| `ORTHONAUT_DB_PATH` | `$HOME/orthonaut.db` | SQLite database path |
-| `ORTHONAUT_DICT_DIR` | `$HOME/dictionaries` | Hunspell dictionary directory |
+| `PORT` | `3000` / `8000` | Port the backend listens on |
 | `ORTHONAUT_CONFIG_PATH` | `$HOME/orthonaut.toml` | Config file path |
+| `ORTHONAUT_DB_PATH` | `$HOME/orthonaut.db` | SQLite database path |
+| `ORTHONAUT_DICT_DIR` | `$HOME/dictionaries` | Dictionary / word-list directory |
 
 ## Deploying to Toolforge
 
-The app runs at `https://orthonaut.toolforge.org/` on Wikimedia's Toolforge platform.
-The Rust binary serves both the API and the compiled React frontend.
+The app runs at `https://orthonaut.toolforge.org/`. A single Rust binary serves both the API
+and the React frontend. The Hunspell dictionaries and the compiled frontend are **embedded in
+the binary at build time**, so the only thing that must exist on Toolforge is `orthonaut.toml`.
 
-### First-time setup
+> The frontend is embedded from `frontend/dist/`, which is committed to git. Whenever the
+> frontend changes, rebuild it (`cd frontend && npm run build`) and commit `frontend/dist/`
+> before deploying.
 
-**1. Register the OAuth app for production**
+### First-time setup (once)
 
-In your [Meta-Wiki OAuth registration](https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration),
-add `https://orthonaut.toolforge.org/api/auth/callback` as an allowed redirect URI.
-
-**2. Upload the config to Toolforge**
-
-The Spanish dictionary files are embedded in the binary — no upload needed.
-Only the config file (which contains secrets) needs to be placed on Toolforge.
-Write it directly from the SSH session to avoid any path or permission uncertainty:
+SSH into the bastion and switch to the tool account:
 
 ```bash
 ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
 become orthonaut
-mkdir -p ~/dictionaries
-cat > ~/orthonaut.toml << 'EOF'
-wikimedia_contact = "https://es.wikipedia.org/wiki/User:<your-wikipedia-username>"
-
-[oauth]
-client_id     = "..."
-client_secret = "..."
-redirect_uri  = "https://orthonaut.toolforge.org/api/auth/callback"
-EOF
-exit
 ```
 
-Omit the `[oauth]` section entirely if not yet configured — the app runs without it.
+**1. Create the config file manually.** It is not in the repo, so write it directly:
 
-**3. Set environment variables**
+```bash
+cat > ~/orthonaut.toml << 'EOF'
+wikimedia_contact = "https://es.wikipedia.org/wiki/User:<your-wikipedia-username>"
+EOF
+```
 
-Inside the buildpack container `$HOME` is **not** the tool's NFS home, so the app must be
-pointed at absolute paths. Set these once (they persist across deploys):
+To enable Wikipedia editing, add an `[oauth]` section with a `redirect_uri` of
+`https://orthonaut.toolforge.org/api/auth/callback` (register it first at the
+[Meta-Wiki OAuth consumer registration](https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration)).
+Without it, the app still runs — only editing is disabled.
+
+**2. Point the app at the config and data on NFS** (inside the container `$HOME` is not the
+tool home, so absolute paths are required; these persist across deploys):
 
 ```bash
 toolforge envvars create ORTHONAUT_CONFIG_PATH /data/project/orthonaut/orthonaut.toml
@@ -88,56 +85,32 @@ toolforge envvars create ORTHONAUT_DB_PATH /data/project/orthonaut/orthonaut.db
 toolforge envvars create ORTHONAUT_DICT_DIR /data/project/orthonaut/dictionaries
 ```
 
-Without these, the app can't find its config (crash loop / "no healthy upstream") and the
-SQLite DB would be written to ephemeral storage and lost on every restart.
-
-**4. First deploy**
+**3. First build and start.** The Makefile isn't on the bastion yet, so run these directly:
 
 ```bash
-make deploy-prep   # builds frontend, stages frontend/dist/ for commit
-git commit -m "initial Toolforge deployment"
-git push
-```
-
-Then on Toolforge:
-```bash
-ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
-become orthonaut
 toolforge build start https://github.com/JavierMonton/orthonaut
-# --mount all keeps the tool's NFS storage (/data/project/orthonaut) mounted, where the
-# config, SQLite DB, and word lists live. Required for the env var paths above to resolve.
-toolforge webservice buildservice start --mount all
+toolforge webservice buildservice start --mount all --mem 2Gi --cpu 1
 ```
 
-Check `toolforge webservice logs` — a healthy start shows `loaded Orthonaut config`
-followed by `backend listening on 0.0.0.0:8000`.
+`--mount all` keeps the tool's NFS storage mounted; `--mem 2Gi` is required because building
+the Hunspell dictionary at startup exceeds the default 512Mi limit (otherwise the container is
+OOMKilled into a crash loop). A healthy start logs `backend listening on 0.0.0.0:8000`.
 
-### Subsequent deploys
-
-If only backend changed:
-```bash
-git push
-```
-Then on Toolforge:
-```bash
-ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
-become orthonaut
-toolforge build start https://github.com/JavierMonton/orthonaut
-toolforge webservice restart
-```
-
-If frontend changed:
-```bash
-make deploy-prep   # rebuilds frontend/dist/ and stages it
-git commit -m "update frontend build"
-git push
-```
-Then on Toolforge (same as above).
-
-### Checking logs
+**4. Clone the repo on the bastion** so you can use the Makefile shortcuts for future deploys:
 
 ```bash
-ssh -i ~/.ssh/<your-key> <your-username>@login.toolforge.org
-become orthonaut
-toolforge webservice logs
+git clone https://github.com/JavierMonton/orthonaut && cd orthonaut
 ```
+
+### Updating
+
+After pushing changes to GitHub (including a rebuilt `frontend/dist/` if the frontend changed),
+deploy from the cloned repo on the bastion:
+
+```bash
+make toolforge-build     # rebuild the image from GitHub
+make toolforge-restart   # roll out the new image
+```
+
+Other shortcuts: `make toolforge-logs`, `make toolforge-stop`, `make toolforge-start`.
+Run `make help` for the full list.
