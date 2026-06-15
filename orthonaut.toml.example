@@ -5,6 +5,11 @@
 # https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
 wikimedia_contact = "https://es.wikipedia.org/wiki/User:YourUsername"
 
+# Optional: back the word lists with a Wikipedia page instead of local files (Replacer-style).
+# When set, the always-wrong list is read from the page and the "add wrong words" input is hidden;
+# "Export valid words to Wikipedia" merges and writes back the valid-words block (requires login).
+# wordlist_page = "Usuario:Jmlarraz/Orthonaut/Palabras"
+
 # OAuth2 credentials from https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration
 # Remove the leading # to enable Wikipedia editing.
 # [oauth]

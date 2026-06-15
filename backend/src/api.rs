@@ -35,6 +35,10 @@ pub struct AppState {
     pub oauth_config: Option<Arc<OAuthConfig>>,
     /// Maps pre-session ID → OAuth state string for in-flight login flows.
     pub oauth_pending_state: Arc<Mutex<HashMap<String, String>>>,
+    /// When set, word lists live on this Wikipedia page (title) instead of local files.
+    pub wordlist_page: Option<Arc<String>>,
+    /// Serializes wiki word-list exports so concurrent exports don't collide.
+    pub export_lock: Arc<Mutex<()>>,
 }
 
 pub fn extract_session_id(headers: &HeaderMap) -> Option<String> {
@@ -239,7 +243,12 @@ pub async fn add_ignored_word(
 
 pub async fn export_ignored_words(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<ExportIgnoredWordsResponse>, ApiError> {
+    if let Some(page) = state.wordlist_page.clone() {
+        return export_ignored_words_to_wiki(&state, page.as_str(), &headers).await;
+    }
+
     let db_words = db::list_ignored_words(state.db_path.as_str())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     let mut merged: BTreeSet<String> = load_existing_suppression_words(state.suppressions_path.as_str())?;
@@ -262,6 +271,74 @@ pub async fn export_ignored_words(
     Ok(Json(ExportIgnoredWordsResponse {
         exported_count: exported_words.len(),
         path: state.suppressions_path.as_ref().to_string(),
+    }))
+}
+
+/// Wikipedia-mode export: merge the in-app valid words into the configured wiki page's
+/// VALIDAS block and publish the edit. Requires the operator to be logged in.
+async fn export_ignored_words_to_wiki(
+    state: &AppState,
+    page: &str,
+    headers: &HeaderMap,
+) -> Result<Json<ExportIgnoredWordsResponse>, ApiError> {
+    let session_id = extract_session_id(headers);
+    let access_token = resolve_access_token(state, session_id.as_deref()).await?;
+
+    // Serialize exports and fetch the latest revision *inside* the lock, so two concurrent
+    // exports merge on top of each other instead of colliding on a stale base revision.
+    let _guard = state.export_lock.lock().await;
+
+    let (wikitext, latest_id) = fetch_wikitext(
+        &state.http_client,
+        page,
+        Some(&access_token),
+        state.wikimedia_contact.as_str(),
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
+    // Re-read merge: union the page's current valid words with the in-app (DB) words so any
+    // word added manually on-wiki since startup is preserved.
+    let db_words = db::list_ignored_words(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut merged: BTreeSet<String> = crate::wordlists::parse_block(
+        &wikitext,
+        crate::wordlists::VALIDAS_START,
+        crate::wordlists::VALIDAS_END,
+    )
+    .into_iter()
+    .collect();
+    merged.extend(db_words);
+    let exported_words: Vec<String> = merged.into_iter().collect();
+
+    let new_wikitext = crate::wordlists::replace_block(
+        &wikitext,
+        crate::wordlists::VALIDAS_START,
+        crate::wordlists::VALIDAS_END,
+        &exported_words,
+    );
+
+    if new_wikitext != wikitext {
+        submit_wiki_edit(
+            &state.http_client,
+            page,
+            &new_wikitext,
+            "Orthonaut: actualizando la lista de palabras válidas (hecho con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]])",
+            latest_id,
+            &access_token,
+            state.wikimedia_contact.as_str(),
+        )
+        .await
+        .map_err(ApiError::Internal)?;
+    }
+
+    let mut checker = state.checker.lock().await;
+    checker.replace_ignored_words(exported_words.clone());
+    drop(checker);
+
+    Ok(Json(ExportIgnoredWordsResponse {
+        exported_count: exported_words.len(),
+        path: page.to_string(),
     }))
 }
 
@@ -353,6 +430,12 @@ pub async fn delete_always_wrong_word(
 pub async fn export_always_wrong_words(
     State(state): State<AppState>,
 ) -> Result<Json<ExportAlwaysWrongWordsResponse>, ApiError> {
+    if state.wordlist_page.is_some() {
+        return Err(ApiError::BadRequest(
+            "always-wrong words are managed on the Wikipedia page in this deployment".to_string(),
+        ));
+    }
+
     let db_words = db::list_always_wrong_words(state.db_path.as_str())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     let mut merged: BTreeSet<String> = load_existing_suppression_words(state.always_wrong_path.as_str())?;
@@ -840,6 +923,27 @@ async fn fetch_wikitext(
     Ok((rev.slots.main.content, rev.revid))
 }
 
+/// Fetch the configured word-list page and parse both sentinel blocks.
+/// Anonymous read (no token) — used at startup and before exporting.
+pub async fn fetch_wordlists(
+    client: &reqwest::Client,
+    title: &str,
+    wikimedia_contact: &str,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let (wikitext, _) = fetch_wikitext(client, title, None, wikimedia_contact).await?;
+    let validas = crate::wordlists::parse_block(
+        &wikitext,
+        crate::wordlists::VALIDAS_START,
+        crate::wordlists::VALIDAS_END,
+    );
+    let incorrectas = crate::wordlists::parse_block(
+        &wikitext,
+        crate::wordlists::INCORRECTAS_START,
+        crate::wordlists::INCORRECTAS_END,
+    );
+    Ok((validas, incorrectas))
+}
+
 async fn fetch_csrf_token(
     client: &reqwest::Client,
     access_token: &str,
@@ -1187,7 +1291,9 @@ mod tests {
             checker: Arc::new(Mutex::new(checker)),
             wikimedia_contact: Arc::new("wikipedia:es; User:Test".to_string()),
             oauth_config: None,
-            oauth_pending_state: Arc::new(Mutex::new(None)),
+            oauth_pending_state: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            wordlist_page: None,
+            export_lock: Arc::new(Mutex::new(())),
         }
     }
 

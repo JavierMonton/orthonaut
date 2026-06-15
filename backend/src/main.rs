@@ -13,6 +13,7 @@ mod extractor;
 mod oauth;
 mod reporter;
 mod wikipedia;
+mod wordlists;
 
 // Release builds: embed the whole dictionaries/ folder into the binary.
 // es_ES.{aff,dic} are read straight from here. suppressions.txt / always_wrong.txt
@@ -92,11 +93,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(format!("{}/dictionaries", home)));
 
+    let config_path_str = std::env::var("ORTHONAUT_CONFIG_PATH")
+        .unwrap_or_else(|_| format!("{}/orthonaut.toml", home));
+    let config_path = Path::new(&config_path_str);
+    let app_config = config::OrthonautConfig::load(config_path)?;
+    tracing::info!(
+        path = %app_config.path.display(),
+        "loaded Orthonaut config"
+    );
+
     // Release: Hunspell files are embedded in the binary — no files to upload.
     // Seed the curated word lists onto disk on first boot so they're loaded by the
     // checker below and remain editable / persisted across exports.
+    // In Wikipedia mode the lists live on-wiki, so we skip seeding the local files.
     #[cfg(not(debug_assertions))]
-    {
+    if app_config.wordlist_page.is_none() {
         std::fs::create_dir_all(&dictionary_dir).ok();
         for name in ["suppressions.txt", "always_wrong.txt"] {
             let dest = dictionary_dir.join(name);
@@ -112,36 +123,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let wikimedia_ua = wikipedia::wikimedia_http_user_agent(&app_config.wikimedia_contact);
+    tracing::info!(user_agent = %wikimedia_ua, "Wikimedia User-Agent");
+    let http_client = reqwest::Client::builder()
+        .user_agent(&wikimedia_ua)
+        .build()?;
+
     // Release: build dictionary from embedded data. Debug: load from disk (local dev with setup.sh).
     #[cfg(not(debug_assertions))]
     let mut checker = checker::SpellChecker::from_strs(&dicts::aff(), &dicts::dic(), &dictionary_dir)?;
     #[cfg(debug_assertions)]
     let mut checker = checker::SpellChecker::new(&dictionary_dir)?;
+
+    // Valid words clicked in-app are buffered in the DB until exported; always apply them.
     let ignored_words = db::list_ignored_words(&db_path)?;
     checker.add_ignored_words(ignored_words);
-    let always_wrong = db::list_always_wrong_words(&db_path)?;
-    checker.add_always_wrong_words(always_wrong);
+
+    if let Some(ref page) = app_config.wordlist_page {
+        // Wikipedia mode: read both lists from the configured page (anonymous read).
+        match api::fetch_wordlists(&http_client, page, &app_config.wikimedia_contact).await {
+            Ok((validas, incorrectas)) => {
+                tracing::info!(
+                    page = %page,
+                    valid = validas.len(),
+                    wrong = incorrectas.len(),
+                    "loaded word lists from Wikipedia"
+                );
+                checker.add_ignored_words(validas);
+                checker.add_always_wrong_words(incorrectas);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    page = %page,
+                    error = %e,
+                    "failed to load word lists from Wikipedia; starting with empty wiki lists"
+                );
+            }
+        }
+    } else {
+        // Local-file mode: always-wrong words come from the DB (suppressions/always_wrong
+        // files were already loaded by the checker constructor above).
+        let always_wrong = db::list_always_wrong_words(&db_path)?;
+        checker.add_always_wrong_words(always_wrong);
+    }
+
     let suppressions_path = checker::suppressions_path(&dictionary_dir)
         .to_string_lossy()
         .to_string();
     let always_wrong_path = checker::always_wrong_path(&dictionary_dir)
         .to_string_lossy()
         .to_string();
-
-    let config_path_str = std::env::var("ORTHONAUT_CONFIG_PATH")
-        .unwrap_or_else(|_| format!("{}/orthonaut.toml", home));
-    let config_path = Path::new(&config_path_str);
-    let app_config = config::OrthonautConfig::load(config_path)?;
-    tracing::info!(
-        path = %app_config.path.display(),
-        "loaded Orthonaut config"
-    );
-
-    let wikimedia_ua = wikipedia::wikimedia_http_user_agent(&app_config.wikimedia_contact);
-    tracing::info!(user_agent = %wikimedia_ua, "Wikimedia User-Agent");
-    let http_client = reqwest::Client::builder()
-        .user_agent(&wikimedia_ua)
-        .build()?;
 
     if let Some(ref oauth) = app_config.oauth {
         tracing::info!(client_id = %oauth.client_id, "OAuth configured");
@@ -160,6 +191,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wikimedia_contact: Arc::new(app_config.wikimedia_contact),
         oauth_config,
         oauth_pending_state: Arc::new(Mutex::new(HashMap::new())),
+        wordlist_page: app_config.wordlist_page.map(Arc::new),
+        export_lock: Arc::new(Mutex::new(())),
     };
 
     let app = Router::new()
