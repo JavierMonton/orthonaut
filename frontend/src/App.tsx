@@ -428,11 +428,15 @@ function App() {
                   >
                     Export valid words to file
                   </button>
-                  <AlwaysWrongWordsManager
-                    count={alwaysWrongWords.length}
-                    onAdd={handleAddAlwaysWrongWord}
-                    onExport={handleExportAlwaysWrongWords}
-                  />
+                  {/* Manual wrong-word management is a local-dev convenience; in
+                      production (Toolforge) wrong words come from the Wikipedia page. */}
+                  {import.meta.env.DEV && (
+                    <AlwaysWrongWordsManager
+                      count={alwaysWrongWords.length}
+                      onAdd={handleAddAlwaysWrongWord}
+                      onExport={handleExportAlwaysWrongWords}
+                    />
+                  )}
                 </>
               )}
             </div>

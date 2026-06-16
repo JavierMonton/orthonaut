@@ -127,23 +127,24 @@ toolforge envvars create ORTHONAUT_DB_PATH /data/project/orthonaut/orthonaut.db
 toolforge envvars create ORTHONAUT_DICT_DIR /data/project/orthonaut/dictionaries
 ```
 
-**3. Fetch the Makefile onto the bastion.** The Toolforge build produces a container image
-from GitHub and never writes to the bastion, so the Makefile has to be placed here separately.
-Its `toolforge-*` targets only call the `toolforge` CLI, so the full repo isn't needed — just
-the single file:
+**3. Fetch the `toolforge.sh` script onto the bastion.** The Toolforge build produces a
+container image from GitHub and never writes to the bastion, so the script has to be placed
+here separately (`make` is not installed on the bastion either). Its commands only call the
+`toolforge` CLI, so the full repo isn't needed — just the single file:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/JavierMonton/orthonaut/main/Makefile -o ~/Makefile
+curl -sL https://raw.githubusercontent.com/JavierMonton/orthonaut/main/toolforge.sh -o ~/toolforge.sh
+chmod +x ~/toolforge.sh
 ```
 
-**4. First build and start.** With the Makefile in place you can use the shortcuts:
+**4. First build and start.** With the script in place you can use the shortcuts:
 
 ```bash
-make toolforge-build
-make toolforge-start
+./toolforge.sh build
+./toolforge.sh start
 ```
 
-`make toolforge-start` runs `toolforge webservice buildservice start --mount all --mem 2Gi --cpu 1`:
+`./toolforge.sh start` runs `toolforge webservice buildservice start --mount all --mem 2Gi --cpu 1`:
 `--mount all` keeps the tool's NFS storage mounted; `--mem 2Gi` is required because building
 the Hunspell dictionary at startup exceeds the default 512Mi limit (otherwise the container is
 OOMKilled into a crash loop). A healthy start logs `backend listening on 0.0.0.0:8000`.
@@ -154,12 +155,12 @@ After pushing changes to GitHub (including a rebuilt `frontend/dist/` if the fro
 deploy from the bastion home:
 
 ```bash
-make toolforge-build     # rebuild the image from GitHub
-make toolforge-restart   # roll out the new image
+./toolforge.sh build     # rebuild the image from GitHub
+./toolforge.sh restart   # roll out the new image
 ```
 
-If you changed the Makefile itself, re-run the `curl` from step 3 first to refresh it on the
+If you changed `toolforge.sh` itself, re-run the `curl` from step 3 first to refresh it on the
 bastion.
 
-Other shortcuts: `make toolforge-logs`, `make toolforge-stop`, `make toolforge-start`.
-Run `make help` for the full list.
+Other shortcuts: `./toolforge.sh logs`, `./toolforge.sh stop`, `./toolforge.sh start`.
+Run `./toolforge.sh help` for the full list.
