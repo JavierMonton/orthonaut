@@ -57,6 +57,32 @@ pub fn extract_session_id(headers: &HeaderMap) -> Option<String> {
         })
 }
 
+/// Returns the caller's session id, minting a new one (plus a `Set-Cookie` value to emit
+/// on the response) when the visitor has none yet. The cookie's lifetime is aligned with
+/// the analysis retention window so identity and data expire on the same schedule.
+fn resolve_or_create_session(headers: &HeaderMap) -> (String, Option<axum::http::HeaderValue>) {
+    match extract_session_id(headers) {
+        Some(id) => (id, None),
+        None => {
+            let id = oauth::generate_random_token();
+            let max_age = db::RETENTION_DAYS * 24 * 60 * 60;
+            let cookie = oauth::set_cookie_header("orthonaut_session", &id, Some(max_age));
+            (id, Some(cookie))
+        }
+    }
+}
+
+/// Builds a check response, attaching a `Set-Cookie` header when a session was just minted.
+fn check_response(body: CheckResponse, set_cookie: Option<axum::http::HeaderValue>) -> Response {
+    let mut response = Json(body).into_response();
+    if let Some(cookie) = set_cookie {
+        response
+            .headers_mut()
+            .insert(axum::http::header::SET_COOKIE, cookie);
+    }
+    response
+}
+
 const SEARCH_MAX_RESULTS: usize = 10;
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +160,12 @@ pub struct ExportIgnoredWordsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ReloadWordlistsResponse {
+    pub valid: usize,
+    pub wrong: usize,
+}
+
+#[derive(Debug, Serialize)]
 pub struct SandboxCheckResponse {
     pub status: String,
     pub wrong_words: Vec<String>,
@@ -183,19 +215,23 @@ impl IntoResponse for ApiError {
 
 pub async fn check_url(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<CheckRequest>,
-) -> Result<Json<CheckResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     if payload.url.trim().is_empty() {
         return Err(ApiError::BadRequest("url is required".to_string()));
     }
 
-    run_check_for_url(&state, payload.url.trim()).await.map(Json)
+    let (session_id, set_cookie) = resolve_or_create_session(&headers);
+    let body = run_check_for_url(&state, &session_id, payload.url.trim()).await?;
+    Ok(check_response(body, set_cookie))
 }
 
 pub async fn check_random_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<CheckRandomRequest>,
-) -> Result<Json<CheckResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let language = payload.language.as_deref().unwrap_or("es");
     if language != "es" {
         return Err(ApiError::BadRequest("only 'es' language is currently supported".to_string()));
@@ -207,11 +243,26 @@ pub async fn check_random_page(
         state.wikimedia_contact.as_str(),
     )
     .await?;
-    run_check_for_url(&state, &random_url).await.map(Json)
+    let (session_id, set_cookie) = resolve_or_create_session(&headers);
+    let body = run_check_for_url(&state, &session_id, &random_url).await?;
+    Ok(check_response(body, set_cookie))
 }
 
-pub async fn list_results(State(state): State<AppState>) -> Result<Json<Vec<ArticleResult>>, ApiError> {
-    let records = db::list_articles(state.db_path.as_str()).map_err(|e| ApiError::Internal(e.to_string()))?;
+pub async fn list_results(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<ArticleResult>>, ApiError> {
+    // Lazy cleanup: drop analyses past the retention window on every list load. This is
+    // the only cleanup trigger — no background scheduler.
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(db::RETENTION_DAYS)).to_rfc3339();
+    db::delete_expired_articles(state.db_path.as_str(), &cutoff)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let Some(session_id) = extract_session_id(&headers) else {
+        return Ok(Json(vec![]));
+    };
+    let records = db::list_articles_for_session(state.db_path.as_str(), &session_id)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     let mapped = records.into_iter().map(ArticleResult::from).collect();
     Ok(Json(mapped))
 }
@@ -344,21 +395,27 @@ async fn export_ignored_words_to_wiki(
 
 pub async fn ignore_word_in_result(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path((id, word)): Path<(i64, String)>,
 ) -> Result<StatusCode, ApiError> {
     if word.trim().is_empty() {
         return Err(ApiError::BadRequest("word is required".to_string()));
     }
-    db::remove_word_from_article(state.db_path.as_str(), id, &word)
+    let session_id = extract_session_id(&headers)
+        .ok_or_else(|| ApiError::NotFound("result not found".to_string()))?;
+    db::remove_word_from_article(state.db_path.as_str(), &session_id, id, &word)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_result(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
-    let deleted = db::delete_article(state.db_path.as_str(), id)
+    let session_id = extract_session_id(&headers)
+        .ok_or_else(|| ApiError::NotFound("result not found".to_string()))?;
+    let deleted = db::delete_article(state.db_path.as_str(), &session_id, id)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     if deleted == 0 {
@@ -461,6 +518,53 @@ pub async fn export_always_wrong_words(
     }))
 }
 
+/// Wikipedia-mode reload: re-read both word lists from the configured wiki page and refresh the
+/// in-memory checker, so words added directly on-wiki take effect without restarting the process.
+/// Mirrors the startup load in `main.rs` (anonymous read; valid words are unioned with the
+/// not-yet-exported in-app DB words so they are not lost).
+pub async fn reload_wordlists(
+    State(state): State<AppState>,
+) -> Result<Json<ReloadWordlistsResponse>, ApiError> {
+    let Some(page) = state.wordlist_page.clone() else {
+        return Err(ApiError::BadRequest(
+            "word lists are only reloadable in Wikipedia mode".to_string(),
+        ));
+    };
+
+    let (validas, incorrectas) = fetch_wordlists(
+        &state.http_client,
+        page.as_str(),
+        state.wikimedia_contact.as_str(),
+    )
+    .await
+    .map_err(ApiError::Internal)?;
+
+    // Union the freshly-fetched valid words with the in-app DB words (runtime-added words not yet
+    // exported to the wiki) so the reload preserves them, exactly like startup.
+    let db_words = db::list_ignored_words(state.db_path.as_str())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut valid: BTreeSet<String> = validas.into_iter().collect();
+    valid.extend(db_words);
+    let valid_words: Vec<String> = valid.into_iter().collect();
+
+    let mut checker = state.checker.lock().await;
+    checker.replace_ignored_words(valid_words.clone());
+    checker.replace_always_wrong_words(incorrectas.clone());
+    drop(checker);
+
+    tracing::info!(
+        page = %page,
+        valid = valid_words.len(),
+        wrong = incorrectas.len(),
+        "reloaded word lists from Wikipedia"
+    );
+
+    Ok(Json(ReloadWordlistsResponse {
+        valid: valid_words.len(),
+        wrong: incorrectas.len(),
+    }))
+}
+
 pub async fn sandbox_check(
     State(state): State<AppState>,
     Json(payload): Json<SandboxCheckRequest>,
@@ -486,13 +590,16 @@ pub async fn sandbox_check(
 
 pub async fn get_word_contexts(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path((id, word)): Path<(i64, String)>,
 ) -> Result<Json<WordContextsResponse>, ApiError> {
     if word.trim().is_empty() {
         return Err(ApiError::BadRequest("word is required".to_string()));
     }
 
-    let article = db::get_article(state.db_path.as_str(), id)
+    let session_id = extract_session_id(&headers)
+        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+    let article = db::get_article(state.db_path.as_str(), &session_id, id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
 
@@ -526,14 +633,18 @@ pub async fn apply_edit(
         return Err(ApiError::BadRequest("word and replacement are required".to_string()));
     }
 
-    let article = db::get_article(state.db_path.as_str(), payload.article_id)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+    let session_id = extract_session_id(&headers);
+    let article = db::get_article(
+        state.db_path.as_str(),
+        session_id.as_deref().unwrap_or(""),
+        payload.article_id,
+    )
+    .map_err(|e| ApiError::Internal(e.to_string()))?
+    .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
 
     let title = extract_title_from_wiki_url(&article.page_url)
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
-    let session_id = extract_session_id(&headers);
     let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
     let new_revision = perform_wiki_edit(
         &state.http_client,
@@ -1091,7 +1202,11 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
     Ok((input.to_string(), input.to_string()))
 }
 
-async fn run_check_for_url(state: &AppState, input_url: &str) -> Result<CheckResponse, ApiError> {
+async fn run_check_for_url(
+    state: &AppState,
+    session_id: &str,
+    input_url: &str,
+) -> Result<CheckResponse, ApiError> {
     let (fetch_url, display_url) = normalize_input_url(input_url)?;
 
     let contact = state.wikimedia_contact.as_str();
@@ -1120,6 +1235,7 @@ async fn run_check_for_url(state: &AppState, input_url: &str) -> Result<CheckRes
 
     let id = db::insert_article(
         state.db_path.as_str(),
+        session_id,
         &page.title,
         &display_url,
         &page.revision_id,

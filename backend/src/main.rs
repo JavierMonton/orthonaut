@@ -207,6 +207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/always-wrong-words", post(api::add_always_wrong_word))
         .route("/api/always-wrong-words/export", post(api::export_always_wrong_words))
         .route("/api/always-wrong-words/:word", delete(api::delete_always_wrong_word))
+        .route("/api/wordlists/reload", post(api::reload_wordlists))
         .route("/api/results", get(api::list_results))
         .route("/api/results/:id", delete(api::delete_result))
         .route("/api/results/:id/words/:word", delete(api::ignore_word_in_result))

@@ -426,7 +426,7 @@ function App() {
                     disabled={loading}
                     className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Export ignored words to file
+                    Export valid words to file
                   </button>
                   <AlwaysWrongWordsManager
                     count={alwaysWrongWords.length}
@@ -527,7 +527,9 @@ function App() {
                       <button
                         type="button"
                         onClick={() => void handleMarkValidWord(word)}
-                        className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700"
+                        disabled={!isLoggedIn}
+                        title={isLoggedIn ? undefined : 'Log in to Wikipedia to mark words as valid.'}
+                        className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300"
                       >
                         Valid word
                       </button>

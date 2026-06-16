@@ -2,6 +2,9 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
+/// How long an analysis is kept before lazy cleanup removes it (from `checked_at`).
+pub const RETENTION_DAYS: i64 = 7;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArticleRecord {
     pub id: i64,
@@ -14,6 +17,9 @@ pub struct ArticleRecord {
 
 pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
+
+    // WAL keeps reads non-blocking while the lazy expiry DELETE holds a write lock.
+    conn.pragma_update(None, "journal_mode", "WAL")?;
 
     // Migrate old single-row oauth_tokens table (id=1 constraint) to per-session schema.
     let has_session_col: bool = conn.query_row(
@@ -52,11 +58,30 @@ pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
         );
         "#,
     )?;
+
+    // Scope analyses to the browser session. Pre-existing rows get NULL and stop
+    // appearing for anyone; the lazy expiry sweep removes them.
+    let has_session_col: bool = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('articles') WHERE name = 'session_id'",
+        [],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
+    if !has_session_col {
+        conn.execute("ALTER TABLE articles ADD COLUMN session_id TEXT", [])?;
+    }
+
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_articles_checked_at ON articles(checked_at);
+        CREATE INDEX IF NOT EXISTS idx_articles_session_id ON articles(session_id);
+        "#,
+    )?;
     Ok(())
 }
 
 pub fn insert_article(
     db_path: &str,
+    session_id: &str,
     page_title: &str,
     page_url: &str,
     revision_id: &str,
@@ -69,10 +94,11 @@ pub fn insert_article(
 
     conn.execute(
         r#"
-        INSERT INTO articles (page_title, page_url, revision_id, wrong_words, checked_at)
-        VALUES (?1, ?2, ?3, ?4, ?5)
+        INSERT INTO articles (session_id, page_title, page_url, revision_id, wrong_words, checked_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         "#,
         params![
+            session_id,
             page_title,
             page_url,
             revision_id,
@@ -84,17 +110,21 @@ pub fn insert_article(
     Ok(conn.last_insert_rowid())
 }
 
-pub fn list_articles(db_path: &str) -> rusqlite::Result<Vec<ArticleRecord>> {
+pub fn list_articles_for_session(
+    db_path: &str,
+    session_id: &str,
+) -> rusqlite::Result<Vec<ArticleRecord>> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
         r#"
         SELECT id, page_title, page_url, revision_id, wrong_words, checked_at
         FROM articles
+        WHERE session_id = ?1
         ORDER BY id DESC
         "#,
     )?;
 
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map(params![session_id], |row| {
         let wrong_words_json: String = row.get(4)?;
         let wrong_words: Vec<String> = serde_json::from_str(&wrong_words_json).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -117,17 +147,30 @@ pub fn list_articles(db_path: &str) -> rusqlite::Result<Vec<ArticleRecord>> {
     rows.collect()
 }
 
-pub fn delete_article(db_path: &str, id: i64) -> rusqlite::Result<usize> {
+pub fn delete_article(db_path: &str, session_id: &str, id: i64) -> rusqlite::Result<usize> {
     let conn = Connection::open(db_path)?;
-    conn.execute("DELETE FROM articles WHERE id = ?1", params![id])
+    conn.execute(
+        "DELETE FROM articles WHERE id = ?1 AND session_id = ?2",
+        params![id, session_id],
+    )
 }
 
-pub fn get_article(db_path: &str, id: i64) -> rusqlite::Result<Option<ArticleRecord>> {
+/// Lazy cleanup: removes analyses older than the cutoff (RFC3339). Returns rows deleted.
+pub fn delete_expired_articles(db_path: &str, cutoff: &str) -> rusqlite::Result<usize> {
+    let conn = Connection::open(db_path)?;
+    conn.execute("DELETE FROM articles WHERE checked_at < ?1", params![cutoff])
+}
+
+pub fn get_article(
+    db_path: &str,
+    session_id: &str,
+    id: i64,
+) -> rusqlite::Result<Option<ArticleRecord>> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT id, page_title, page_url, revision_id, wrong_words, checked_at FROM articles WHERE id = ?1",
+        "SELECT id, page_title, page_url, revision_id, wrong_words, checked_at FROM articles WHERE id = ?1 AND session_id = ?2",
     )?;
-    let mut rows = stmt.query_map(params![id], |row| {
+    let mut rows = stmt.query_map(params![id, session_id], |row| {
         let wrong_words_json: String = row.get(4)?;
         let wrong_words: Vec<String> = serde_json::from_str(&wrong_words_json).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
@@ -261,13 +304,18 @@ pub fn delete_always_wrong_word(db_path: &str, word: &str) -> rusqlite::Result<u
 
 /// Removes `word` from the article's wrong_words list.
 /// Returns `true` if the article was deleted (no words left), `false` if updated.
-pub fn remove_word_from_article(db_path: &str, article_id: i64, word: &str) -> rusqlite::Result<bool> {
+pub fn remove_word_from_article(
+    db_path: &str,
+    session_id: &str,
+    article_id: i64,
+    word: &str,
+) -> rusqlite::Result<bool> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT wrong_words FROM articles WHERE id = ?1",
+        "SELECT wrong_words FROM articles WHERE id = ?1 AND session_id = ?2",
     )?;
     let wrong_words_json: Option<String> = stmt
-        .query_map(params![article_id], |row| row.get(0))?
+        .query_map(params![article_id, session_id], |row| row.get(0))?
         .next()
         .transpose()?;
 
@@ -280,15 +328,18 @@ pub fn remove_word_from_article(db_path: &str, article_id: i64, word: &str) -> r
     words.retain(|w| w != word);
 
     if words.is_empty() {
-        conn.execute("DELETE FROM articles WHERE id = ?1", params![article_id])?;
+        conn.execute(
+            "DELETE FROM articles WHERE id = ?1 AND session_id = ?2",
+            params![article_id, session_id],
+        )?;
         return Ok(true);
     }
 
     let updated_json = serde_json::to_string(&words)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute(
-        "UPDATE articles SET wrong_words = ?1 WHERE id = ?2",
-        params![updated_json, article_id],
+        "UPDATE articles SET wrong_words = ?1 WHERE id = ?2 AND session_id = ?3",
+        params![updated_json, article_id, session_id],
     )?;
     Ok(false)
 }
@@ -297,7 +348,11 @@ pub fn remove_word_from_article(db_path: &str, article_id: i64, word: &str) -> r
 mod tests {
     use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 
-    use super::{delete_ignored_word, init_db, insert_ignored_word, list_ignored_words};
+    use super::{
+        delete_expired_articles, delete_ignored_word, init_db, insert_article, insert_ignored_word,
+        list_articles_for_session, list_ignored_words,
+    };
+    use rusqlite::{params, Connection};
 
     fn temp_db_path() -> PathBuf {
         let nanos = SystemTime::now()
@@ -324,6 +379,60 @@ mod tests {
         assert_eq!(deleted, 1);
         let words_after_delete = list_ignored_words(&db_path_str).expect("list should work");
         assert_eq!(words_after_delete, vec!["mustafá".to_string()]);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn articles_are_scoped_to_session() {
+        let db_path = temp_db_path();
+        let db = db_path.to_string_lossy().to_string();
+        init_db(&db).expect("db init should work");
+
+        insert_article(&db, "sess-a", "Page A", "http://a", "1", &["foo".into()])
+            .expect("insert a");
+        insert_article(&db, "sess-b", "Page B", "http://b", "2", &["bar".into()])
+            .expect("insert b");
+
+        let a = list_articles_for_session(&db, "sess-a").expect("list a");
+        let b = list_articles_for_session(&db, "sess-b").expect("list b");
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].page_title, "Page A");
+        assert_eq!(b.len(), 1);
+        assert_eq!(b[0].page_title, "Page B");
+        // An unknown session sees nothing.
+        assert!(list_articles_for_session(&db, "nobody").expect("list").is_empty());
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn expired_articles_are_swept() {
+        let db_path = temp_db_path();
+        let db = db_path.to_string_lossy().to_string();
+        init_db(&db).expect("db init should work");
+
+        let old_id = insert_article(&db, "sess", "Old", "http://old", "1", &["foo".into()])
+            .expect("insert old");
+        insert_article(&db, "sess", "Fresh", "http://fresh", "2", &["bar".into()])
+            .expect("insert fresh");
+
+        // Backdate the first article well past any retention window.
+        let conn = Connection::open(&db).expect("open");
+        conn.execute(
+            "UPDATE articles SET checked_at = ?1 WHERE id = ?2",
+            params!["2000-01-01T00:00:00+00:00", old_id],
+        )
+        .expect("backdate");
+        drop(conn);
+
+        let cutoff = "2020-01-01T00:00:00+00:00";
+        let removed = delete_expired_articles(&db, cutoff).expect("sweep");
+        assert_eq!(removed, 1);
+
+        let remaining = list_articles_for_session(&db, "sess").expect("list");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].page_title, "Fresh");
 
         let _ = fs::remove_file(db_path);
     }

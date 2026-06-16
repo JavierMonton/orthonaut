@@ -13,7 +13,7 @@ use crate::{api::{extract_session_id, AppState}, db};
 const AUTHORIZE_URL: &str = "https://es.wikipedia.org/w/rest.php/oauth2/authorize";
 const TOKEN_URL: &str = "https://es.wikipedia.org/w/rest.php/oauth2/access_token";
 
-fn generate_random_token() -> String {
+pub fn generate_random_token() -> String {
     rand::thread_rng()
         .sample_iter(Alphanumeric)
         .take(32)
@@ -21,7 +21,7 @@ fn generate_random_token() -> String {
         .collect()
 }
 
-fn set_cookie_header(name: &str, value: &str, max_age: Option<i64>) -> HeaderValue {
+pub fn set_cookie_header(name: &str, value: &str, max_age: Option<i64>) -> HeaderValue {
     let max_age_part = match max_age {
         Some(s) => format!("; Max-Age={s}"),
         None => String::new(),
@@ -48,6 +48,19 @@ fn extract_presession_id(headers: &HeaderMap) -> Option<String> {
         })
 }
 
+/// Where to bounce the browser after the OAuth dance. Derived from the configured
+/// `redirect_uri`'s origin so dev (localhost:5173) and prod (toolforge.org) each land
+/// back on their own front end instead of a hardcoded localhost.
+fn frontend_redirect(state: &AppState, query: &str) -> Redirect {
+    let base = state
+        .oauth_config
+        .as_ref()
+        .and_then(|c| reqwest::Url::parse(&c.redirect_uri).ok())
+        .map(|u| u.origin().ascii_serialization())
+        .unwrap_or_else(|| "http://localhost:5173".to_string());
+    Redirect::to(&format!("{base}/?{query}"))
+}
+
 #[derive(Serialize)]
 pub struct AuthStatusResponse {
     pub logged_in: bool,
@@ -66,7 +79,7 @@ pub async fn auth_login(
     };
 
     if oauth_config.token.is_some() {
-        return Redirect::to("http://localhost:5173/?auth=success").into_response();
+        return frontend_redirect(&state, "auth=success").into_response();
     }
 
     // If the user is already logged in (has a valid session), just redirect to success.
@@ -76,11 +89,13 @@ pub async fn auth_login(
             .flatten()
             .is_some()
         {
-            return Redirect::to("http://localhost:5173/?auth=success").into_response();
+            return frontend_redirect(&state, "auth=success").into_response();
         }
     }
 
-    let session_id = generate_random_token();
+    // Reuse the visitor's existing (anonymous) session id so their analysis list stays
+    // attached after login; only mint a fresh one if they have no session cookie yet.
+    let session_id = extract_session_id(&headers).unwrap_or_else(generate_random_token);
     let oauth_state = generate_random_token();
 
     {
@@ -119,30 +134,30 @@ pub async fn auth_callback(
     Query(params): Query<CallbackParams>,
 ) -> Response {
     if params.error.is_some() {
-        return Redirect::to("http://localhost:5173/?auth=error").into_response();
+        return frontend_redirect(&state, "auth=error").into_response();
     }
 
     let Some(code) = params.code else {
-        return Redirect::to("http://localhost:5173/?auth=error").into_response();
+        return frontend_redirect(&state, "auth=error").into_response();
     };
     let Some(param_state) = params.state else {
-        return Redirect::to("http://localhost:5173/?auth=error").into_response();
+        return frontend_redirect(&state, "auth=error").into_response();
     };
 
     let Some(session_id) = extract_presession_id(&headers) else {
-        return Redirect::to("http://localhost:5173/?auth=error").into_response();
+        return frontend_redirect(&state, "auth=error").into_response();
     };
 
     {
         let mut pending = state.oauth_pending_state.lock().await;
         match pending.remove(&session_id) {
             Some(ref expected) if *expected == param_state => {}
-            _ => return Redirect::to("http://localhost:5173/?auth=error").into_response(),
+            _ => return frontend_redirect(&state, "auth=error").into_response(),
         }
     }
 
     let Some(ref oauth_config) = state.oauth_config else {
-        return Redirect::to("http://localhost:5173/?auth=error").into_response();
+        return frontend_redirect(&state, "auth=error").into_response();
     };
 
     match exchange_code_for_token(
@@ -167,10 +182,10 @@ pub async fn auth_callback(
                 &expires_at,
             ) {
                 tracing::error!("Failed to store OAuth token: {e}");
-                return Redirect::to("http://localhost:5173/?auth=error").into_response();
+                return frontend_redirect(&state, "auth=error").into_response();
             }
 
-            let mut response = Redirect::to("http://localhost:5173/?auth=success").into_response();
+            let mut response = frontend_redirect(&state, "auth=success").into_response();
             let hdrs = response.headers_mut();
             // Set the permanent session cookie.
             hdrs.insert(
@@ -186,7 +201,7 @@ pub async fn auth_callback(
         }
         Err(e) => {
             tracing::error!("Token exchange failed: {e}");
-            Redirect::to("http://localhost:5173/?auth=error").into_response()
+            frontend_redirect(&state, "auth=error").into_response()
         }
     }
 }
@@ -303,10 +318,7 @@ pub async fn auth_logout(
         let _ = db::delete_oauth_token(state.db_path.as_str(), &session_id);
     }
 
-    let mut response = StatusCode::NO_CONTENT.into_response();
-    response.headers_mut().insert(
-        header::SET_COOKIE,
-        set_cookie_header("orthonaut_session", "", Some(0)),
-    );
-    response
+    // Drop the login (token) only; keep the session cookie so the per-browser analysis
+    // list survives logout.
+    StatusCode::NO_CONTENT.into_response()
 }
