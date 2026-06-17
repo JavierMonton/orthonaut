@@ -29,9 +29,10 @@ frontend/node_modules/
 frontend/dist-ssr/
 frontend/.vite/
 frontend/.cache/
-# frontend/dist/ is committed — rust-embed embeds it into the release binary at compile time
-!frontend/dist/
-!frontend/dist/**
+# frontend/dist/ is a build artifact: CI (.github/workflows/deploy.yml) builds it
+# and publishes it to the `deploy` branch, which Toolforge builds from. It is NOT
+# tracked on `main`.
+frontend/dist/
 
 # --- Orthonaut config (contains secrets) ---
 /orthonaut.toml

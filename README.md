@@ -88,9 +88,11 @@ The app runs at `https://orthonaut.toolforge.org/`. A single Rust binary serves 
 and the React frontend. The Hunspell dictionaries and the compiled frontend are **embedded in
 the binary at build time**, so the only thing that must exist on Toolforge is `orthonaut.toml`.
 
-> The frontend is embedded from `frontend/dist/`, which is committed to git. Whenever the
-> frontend changes, rebuild it (`cd frontend && npm run build`) and commit `frontend/dist/`
-> before deploying.
+> The frontend is embedded from `frontend/dist/`, which is **not** committed on `main`.
+> A GitHub Actions workflow (`.github/workflows/deploy.yml`) builds it on every push to
+> `main` and publishes `deploy = main source + built frontend/dist` to the `deploy` branch.
+> Toolforge builds its image from that branch (`toolforge build start <repo> --ref deploy`),
+> so you never rebuild or commit `frontend/dist/` by hand.
 
 ### First-time setup (once)
 
@@ -151,13 +153,17 @@ OOMKilled into a crash loop). A healthy start logs `backend listening on 0.0.0.0
 
 ### Updating
 
-After pushing changes to GitHub (including a rebuilt `frontend/dist/` if the frontend changed),
-deploy from the bastion home:
+Push your changes to `main`. GitHub Actions builds the frontend and publishes the `deploy`
+branch automatically — no manual `npm run build` or committing `frontend/dist/`. Once the
+workflow has finished, deploy from the bastion home:
 
 ```bash
-./toolforge.sh build     # rebuild the image from GitHub
+./toolforge.sh build     # rebuild the image from the `deploy` branch on GitHub
 ./toolforge.sh restart   # roll out the new image
 ```
+
+> The `build` command targets the `deploy` branch, so wait for the GitHub Actions run on your
+> push to finish before running it (otherwise you'll rebuild the previous frontend).
 
 If you changed `toolforge.sh` itself, re-run the `curl` from step 3 first to refresh it on the
 bastion.

@@ -53,7 +53,7 @@ dev:
 
 # --- Toolforge (run on the bastion after `become orthonaut`) ---
 toolforge-build:
-	toolforge build start $(REPO)
+	toolforge build start $(REPO) --ref deploy
 
 toolforge-start:
 	toolforge webservice buildservice start --mount all --mem 2Gi --cpu 1
