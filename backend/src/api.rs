@@ -911,7 +911,7 @@ async fn perform_wiki_edit(
         title,
         &new_wikitext,
         &format!(
-            "Corrección ortográfica: «{}» → «{}» (hecho con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]])",
+            "Corrección ortográfica con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]]: «{}» → «{}»",
             word, replacement
         ),
         latest_id,
