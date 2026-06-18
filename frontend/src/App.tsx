@@ -73,6 +73,9 @@ function App() {
         if (params.get('auth') === 'success') {
           setSuccess('Logged in to Wikipedia successfully')
           window.history.replaceState({}, '', window.location.pathname)
+        } else if (params.get('auth') === 'not_autoconfirmed') {
+          setError('Your Wikipedia account must be autoconfirmed (≈50 edits and 4+ days old) to log in here.')
+          window.history.replaceState({}, '', window.location.pathname)
         } else if (params.get('auth') === 'error') {
           setError('Wikipedia login failed. Please try again.')
           window.history.replaceState({}, '', window.location.pathname)

@@ -170,6 +170,40 @@ pub async fn auth_callback(
     .await
     {
         Ok(token_data) => {
+            // Gate: only autoconfirmed/confirmed accounts may complete login.
+            if oauth_config.require_autoconfirmed {
+                match fetch_user_groups(
+                    &state.http_client,
+                    &token_data.access_token,
+                    state.wikimedia_contact.as_str(),
+                )
+                .await
+                {
+                    Ok(groups) => {
+                        let allowed = groups
+                            .iter()
+                            .any(|g| g == "autoconfirmed" || g == "confirmed");
+                        if !allowed {
+                            tracing::info!(
+                                "Rejected login for non-autoconfirmed account (groups: {groups:?})"
+                            );
+                            let mut response =
+                                frontend_redirect(&state, "auth=not_autoconfirmed").into_response();
+                            // Clear the pre-session cookie; no session is established.
+                            response.headers_mut().insert(
+                                header::SET_COOKIE,
+                                set_cookie_header("orthonaut_presession", "", Some(0)),
+                            );
+                            return response;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to fetch user groups: {e}");
+                        return frontend_redirect(&state, "auth=error").into_response();
+                    }
+                }
+            }
+
             let expires_at = (chrono::Utc::now()
                 + chrono::Duration::seconds(token_data.expires_in as i64))
             .to_rfc3339();
@@ -240,6 +274,55 @@ pub async fn exchange_code_for_token(
     }
 
     response.json().await.map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+struct UserInfoResponse {
+    query: UserInfoQuery,
+}
+
+#[derive(Deserialize)]
+struct UserInfoQuery {
+    userinfo: UserInfo,
+}
+
+#[derive(Deserialize)]
+struct UserInfo {
+    #[serde(default)]
+    groups: Vec<String>,
+}
+
+/// Fetch the logged-in user's MediaWiki groups via the Action API
+/// (`meta=userinfo&uiprop=groups`) using the freshly-obtained bearer token.
+/// Used to enforce the autoconfirmed login gate. Returns the `groups` array.
+async fn fetch_user_groups(
+    client: &reqwest::Client,
+    access_token: &str,
+    wikimedia_contact: &str,
+) -> Result<Vec<String>, String> {
+    let response = crate::wikipedia::wikimedia_send(
+        client
+            .get("https://es.wikipedia.org/w/api.php")
+            .query(&[
+                ("action", "query"),
+                ("meta", "userinfo"),
+                ("uiprop", "groups"),
+                ("format", "json"),
+            ])
+            .header("Authorization", format!("Bearer {access_token}")),
+        wikimedia_contact,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("userinfo fetch returned {status}: {body}"));
+    }
+
+    let payload: UserInfoResponse = response.json().await.map_err(|e| e.to_string())?;
+    Ok(payload.query.userinfo.groups)
 }
 
 pub async fn refresh_access_token(

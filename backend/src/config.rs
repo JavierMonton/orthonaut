@@ -22,6 +22,16 @@ pub struct OAuthConfig {
     pub client_secret: String,
     pub redirect_uri: String,
     pub token: Option<String>,
+    /// When true (default), only Wikipedia accounts in the `autoconfirmed` (or
+    /// manually-granted `confirmed`) group are allowed to complete OAuth login.
+    /// Mirrors Replacer's "autoconfirmadas" gate to keep brand-new/throwaway
+    /// accounts from editing.
+    #[serde(default = "default_require_autoconfirmed")]
+    pub require_autoconfirmed: bool,
+}
+
+fn default_require_autoconfirmed() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]

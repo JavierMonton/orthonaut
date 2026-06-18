@@ -16,3 +16,5 @@ wikimedia_contact = "https://es.wikipedia.org/wiki/User:YourUsername"
 # client_id = "..."
 # client_secret = "..."
 # redirect_uri = "http://localhost:5173/api/auth/callback"
+# Only allow autoconfirmed accounts (≈50 edits and 4+ days old) to log in. Default: true.
+# require_autoconfirmed = true
