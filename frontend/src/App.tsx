@@ -412,7 +412,7 @@ function App() {
               section === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
             }`}
           >
-            Estadísticas
+            Stats
           </a>
         </div>
       </section>
