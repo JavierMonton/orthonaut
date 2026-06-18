@@ -14,6 +14,7 @@ import {
   getIgnoredWords,
   getResults,
   getSearchContexts,
+  getStats,
   ignoreWordInResult,
   loginWithWikipedia,
   logout,
@@ -24,9 +25,9 @@ import AlwaysWrongWordsManager from './components/AlwaysWrongWordsManager'
 import CheckForm from './components/CheckForm'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultRow from './components/ResultRow'
-import type { ArticleResult, SandboxCheckResponse, SearchResult } from './types'
+import type { ArticleResult, EditCount, SandboxCheckResponse, SearchResult } from './types'
 
-type Section = 'checker' | 'sandbox' | 'search'
+type Section = 'checker' | 'sandbox' | 'search' | 'stats'
 
 function App() {
   const [section, setSection] = useState<Section>('checker')
@@ -49,6 +50,8 @@ function App() {
   const [searchLimit, setSearchLimit] = useState(50)
   const [searchOffset, setSearchOffset] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [stats, setStats] = useState<EditCount[]>([])
+  const [statsLoading, setStatsLoading] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -79,6 +82,16 @@ function App() {
       }
     })()
   }, [])
+
+  // Refresh the leaderboard each time the Stats tab is opened so counts stay current.
+  useEffect(() => {
+    if (section !== 'stats') return
+    setStatsLoading(true)
+    void getStats()
+      .then(setStats)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load stats'))
+      .finally(() => setStatsLoading(false))
+  }, [section])
 
   const sortedResults = useMemo(() => results, [results])
   const ignoredWordsSet = useMemo(() => new Set(ignoredWords), [ignoredWords])
@@ -389,6 +402,18 @@ function App() {
           >
             Search/Replace
           </a>
+          <a
+            href="#stats"
+            onClick={(event) => {
+              event.preventDefault()
+              setSection('stats')
+            }}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              section === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            Estadísticas
+          </a>
         </div>
       </section>
 
@@ -636,6 +661,48 @@ function App() {
             </div>
           )}
         </>
+      )}
+
+      {section === 'stats' && (
+        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-lg font-semibold text-slate-800">Ediciones por usuario</h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Número de ediciones realizadas con esta aplicación, de mayor a menor.
+          </p>
+          {statsLoading ? (
+            <LoadingSpinner />
+          ) : stats.length === 0 ? (
+            <p className="text-sm text-slate-600">Aún no hay ediciones registradas.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-slate-700">
+                <thead className="border-b border-slate-200 text-left text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Usuario</th>
+                    <th className="px-3 py-2 text-right font-medium">Ediciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map((stat) => (
+                    <tr key={stat.username} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-3 py-2">
+                        <a
+                          href={`https://es.wikipedia.org/wiki/Usuario:${encodeURIComponent(stat.username)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-700 hover:underline"
+                        >
+                          {stat.username}
+                        </a>
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{stat.edit_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
     </main>
   )

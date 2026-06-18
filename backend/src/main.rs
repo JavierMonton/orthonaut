@@ -216,6 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/search", post(api::search_handler))
         .route("/api/search/contexts", post(api::get_search_contexts))
         .route("/api/search/edit", post(api::apply_search_edit))
+        .route("/api/stats", get(api::list_stats))
         .route("/api/auth/login", get(oauth::auth_login))
         .route("/api/auth/callback", get(oauth::auth_callback))
         .route("/api/auth/status", get(oauth::auth_status))

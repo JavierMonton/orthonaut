@@ -4,6 +4,7 @@ import type {
   ArticleResult,
   AuthStatusResponse,
   CheckResponse,
+  EditCount,
   ExportAlwaysWrongWordsResponse,
   ExportIgnoredWordsResponse,
   IgnoredWordsResponse,
@@ -204,6 +205,15 @@ export async function applyEdit(
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     throw new Error(payload.error ?? 'Failed to apply edit')
+  }
+  return response.json()
+}
+
+export async function getStats(): Promise<EditCount[]> {
+  const response = await fetch('/api/stats')
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error ?? 'Failed to load stats')
   }
   return response.json()
 }

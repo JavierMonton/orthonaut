@@ -2,9 +2,11 @@
 //!
 //! In Wikipedia mode (when `wordlist_page` is configured) Orthonaut reads its two
 //! word lists from a single wiki page. Each list lives between a pair of HTML-comment
-//! sentinel markers, one word per line. Orthonaut only ever rewrites the text *between*
-//! a pair of markers, so any human-added words and any surrounding documentation on the
-//! page are preserved untouched.
+//! sentinel markers, wrapped in a `<pre>` block (so MediaWiki renders one word per line
+//! instead of collapsing the newlines into a single paragraph). The markers stay *outside*
+//! the `<pre>` tags, because HTML comments render literally inside `<pre>`. Orthonaut only
+//! ever rewrites the text *between* a pair of markers, so any human-added words and any
+//! surrounding documentation on the page are preserved untouched.
 
 use crate::checker::normalize_ignored_word;
 
@@ -25,6 +27,7 @@ pub fn parse_block(wikitext: &str, start: &str, end: &str) -> Vec<String> {
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
+        .filter(|line| !line.eq_ignore_ascii_case("<pre>") && !line.eq_ignore_ascii_case("</pre>"))
         .map(normalize_ignored_word)
         .filter(|word| !word.is_empty())
         .collect()
@@ -70,8 +73,10 @@ fn render_words(words: &[String]) -> String {
     if words.is_empty() {
         return String::new();
     }
-    let mut body = words.join("\n");
-    body.push('\n');
+    let mut body = String::with_capacity(words.iter().map(|w| w.len() + 1).sum::<usize>() + 13);
+    body.push_str("<pre>\n");
+    body.push_str(&words.join("\n"));
+    body.push_str("\n</pre>\n");
     body
 }
 
@@ -128,7 +133,9 @@ concecuencia\n\
         let words = vec!["abaco".to_string(), "nuevo".to_string()];
         let updated = replace_block(PAGE, VALIDAS_START, VALIDAS_END, &words);
 
-        // The valid words block now reflects the new set...
+        // The block is wrapped in <pre> so MediaWiki renders one word per line...
+        assert!(updated.contains("<pre>\nabaco\nnuevo\n</pre>"));
+        // ...the valid words block now reflects the new set (wrapper stripped on read)...
         assert_eq!(
             parse_block(&updated, VALIDAS_START, VALIDAS_END),
             words
@@ -152,10 +159,15 @@ concecuencia\n\
         let words: Vec<String> = merged.into_iter().collect();
 
         let updated = replace_block(PAGE, VALIDAS_START, VALIDAS_END, &words);
+        assert!(updated.contains("<pre>"));
         let reparsed = parse_block(&updated, VALIDAS_START, VALIDAS_END);
         assert!(reparsed.contains(&"abaco".to_string()));
         assert!(reparsed.contains(&"mustafá".to_string()));
         assert!(reparsed.contains(&"recienllegada".to_string()));
+        // Re-exporting must not double the wrapper.
+        let twice = replace_block(&updated, VALIDAS_START, VALIDAS_END, &reparsed);
+        assert_eq!(twice.matches("<pre>").count(), 1);
+        assert_eq!(parse_block(&twice, VALIDAS_START, VALIDAS_END), reparsed);
     }
 
     #[test]
@@ -167,6 +179,7 @@ concecuencia\n\
         assert!(updated.starts_with("Sólo documentación, sin marcadores.\n"));
         assert!(updated.contains(VALIDAS_START));
         assert!(updated.contains(VALIDAS_END));
+        assert!(updated.contains("<pre>"));
         assert_eq!(
             parse_block(&updated, VALIDAS_START, VALIDAS_END),
             words

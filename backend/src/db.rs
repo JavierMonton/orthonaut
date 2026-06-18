@@ -56,6 +56,11 @@ pub fn init_db(db_path: &str) -> rusqlite::Result<()> {
             expires_at TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS edit_counts (
+            username TEXT PRIMARY KEY,
+            edit_count INTEGER NOT NULL DEFAULT 0,
+            last_edit_at TEXT NOT NULL
+        );
         "#,
     )?;
 
@@ -300,6 +305,48 @@ pub fn list_always_wrong_words(db_path: &str) -> rusqlite::Result<Vec<String>> {
 pub fn delete_always_wrong_word(db_path: &str, word: &str) -> rusqlite::Result<usize> {
     let conn = Connection::open(db_path)?;
     conn.execute("DELETE FROM always_wrong_words WHERE word = ?1", params![word])
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EditCount {
+    pub username: String,
+    pub edit_count: i64,
+}
+
+/// Records one edit by `username`, bumping their running total by one.
+pub fn increment_edit_count(db_path: &str, username: &str) -> rusqlite::Result<()> {
+    let conn = Connection::open(db_path)?;
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO edit_counts (username, edit_count, last_edit_at)
+        VALUES (?1, 1, ?2)
+        ON CONFLICT(username) DO UPDATE SET
+            edit_count = edit_count + 1,
+            last_edit_at = excluded.last_edit_at
+        "#,
+        params![username, now],
+    )?;
+    Ok(())
+}
+
+/// Lists all editors and their totals, most prolific first.
+pub fn list_edit_counts(db_path: &str) -> rusqlite::Result<Vec<EditCount>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT username, edit_count
+        FROM edit_counts
+        ORDER BY edit_count DESC, username ASC
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(EditCount {
+            username: row.get(0)?,
+            edit_count: row.get(1)?,
+        })
+    })?;
+    rows.collect()
 }
 
 /// Removes `word` from the article's wrong_words list.

@@ -60,3 +60,8 @@ export type SearchResult = {
   title: string
   url: string
 }
+
+export type EditCount = {
+  username: string
+  edit_count: number
+}

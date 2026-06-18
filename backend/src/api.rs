@@ -646,7 +646,7 @@ pub async fn apply_edit(
         .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
 
     let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
-    let new_revision = perform_wiki_edit(
+    let (new_revision, username) = perform_wiki_edit(
         &state.http_client,
         &title,
         &payload.word,
@@ -656,6 +656,8 @@ pub async fn apply_edit(
         state.wikimedia_contact.as_str(),
     )
     .await?;
+
+    record_edit(&state, username.as_deref());
 
     Ok(Json(ApplyEditResponse { ok: true, new_revision }))
 }
@@ -798,7 +800,7 @@ pub async fn apply_search_edit(
 
     let session_id = extract_session_id(&headers);
     let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
-    let new_revision = perform_wiki_edit(
+    let (new_revision, username) = perform_wiki_edit(
         &state.http_client,
         &title,
         &payload.word,
@@ -809,7 +811,30 @@ pub async fn apply_search_edit(
     )
     .await?;
 
+    record_edit(&state, username.as_deref());
+
     Ok(Json(ApplyEditResponse { ok: true, new_revision }))
+}
+
+/// Bumps the per-user edit leaderboard after a successful edit. A failure here must
+/// never fail the edit itself, so errors (and a missing username) are only logged.
+fn record_edit(state: &AppState, username: Option<&str>) {
+    let Some(username) = username else {
+        tracing::warn!("edit succeeded but Wikipedia returned no username; not counted");
+        return;
+    };
+    if let Err(e) = db::increment_edit_count(state.db_path.as_str(), username) {
+        tracing::error!("failed to record edit count for {username}: {e}");
+    }
+}
+
+/// Returns the edit leaderboard: every editor and their total, most edits first.
+pub async fn list_stats(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<db::EditCount>>, ApiError> {
+    db::list_edit_counts(state.db_path.as_str())
+        .map(Json)
+        .map_err(|e| ApiError::Internal(e.to_string()))
 }
 
 async fn resolve_access_token(state: &AppState, session_id: Option<&str>) -> Result<String, ApiError> {
@@ -867,7 +892,7 @@ async fn perform_wiki_edit(
     occurrence_index: Option<usize>,
     access_token: &str,
     wikimedia_contact: &str,
-) -> Result<u64, ApiError> {
+) -> Result<(u64, Option<String>), ApiError> {
     let (wikitext, latest_id) =
         fetch_wikitext(client, title, Some(access_token), wikimedia_contact)
             .await
@@ -972,11 +997,17 @@ struct ActionTokenResponse {
 #[derive(serde::Deserialize)]
 struct ActionTokenQuery {
     tokens: ActionTokens,
+    userinfo: Option<ActionUserInfo>,
 }
 
 #[derive(serde::Deserialize)]
 struct ActionTokens {
     csrftoken: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ActionUserInfo {
+    name: String,
 }
 
 // Action API structs for edit response
@@ -1055,17 +1086,20 @@ pub async fn fetch_wordlists(
     Ok((validas, incorrectas))
 }
 
+/// Fetches the CSRF edit token and, in the same request, the logged-in user's name
+/// (`meta=tokens|userinfo`) so we can attribute the edit without an extra round trip.
+/// Returns `(csrf_token, username)`; username is `None` if the API omits it.
 async fn fetch_csrf_token(
     client: &reqwest::Client,
     access_token: &str,
     wikimedia_contact: &str,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let response = wikipedia::wikimedia_send(
         client
             .get("https://es.wikipedia.org/w/api.php")
             .query(&[
                 ("action", "query"),
-                ("meta", "tokens"),
+                ("meta", "tokens|userinfo"),
                 ("type", "csrf"),
                 ("format", "json"),
             ])
@@ -1082,7 +1116,8 @@ async fn fetch_csrf_token(
     }
 
     let payload: ActionTokenResponse = response.json().await.map_err(|e| e.to_string())?;
-    Ok(payload.query.tokens.csrftoken)
+    let username = payload.query.userinfo.map(|u| u.name);
+    Ok((payload.query.tokens.csrftoken, username))
 }
 
 async fn submit_wiki_edit(
@@ -1093,8 +1128,8 @@ async fn submit_wiki_edit(
     latest_id: u64,
     access_token: &str,
     wikimedia_contact: &str,
-) -> Result<u64, String> {
-    let csrf_token = fetch_csrf_token(client, access_token, wikimedia_contact).await?;
+) -> Result<(u64, Option<String>), String> {
+    let (csrf_token, username) = fetch_csrf_token(client, access_token, wikimedia_contact).await?;
     let latest_id_str = latest_id.to_string();
     let params = [
         ("action", "edit"),
@@ -1123,7 +1158,7 @@ async fn submit_wiki_edit(
     }
 
     let edit_resp: ActionEditResponse = response.json().await.map_err(|e| e.to_string())?;
-    Ok(edit_resp.edit.newrevid)
+    Ok((edit_resp.edit.newrevid, username))
 }
 
 fn replace_word_occurrences(text: &str, word: &str, replacement: &str, occurrence_index: Option<usize>) -> String {
