@@ -1186,9 +1186,8 @@ fn replace_word_occurrences(text: &str, word: &str, replacement: &str, occurrenc
                 .flat_map(|c| c.to_lowercase())
                 .collect();
             if slice_lower == word_chars {
-                let prev_is_word = i > 0 && is_word_char(chars[i - 1]);
-                let next_is_word =
-                    i + word_len < chars.len() && is_word_char(chars[i + word_len]);
+                let prev_is_word = word_extends_left(&chars, i);
+                let next_is_word = word_extends_right(&chars, i + word_len);
                 if !prev_is_word && !next_is_word {
                     let should_replace = occurrence_index.map_or(true, |idx| idx == match_count);
                     match_count += 1;
@@ -1206,8 +1205,34 @@ fn replace_word_occurrences(text: &str, word: &str, replacement: &str, occurrenc
     result
 }
 
-fn is_word_char(c: char) -> bool {
-    c.is_alphabetic() || c == '\'' || c == '-'
+/// Whether the character immediately before the match (at `start - 1`) makes the
+/// matched run part of a larger word. Letters and hyphens always do. An
+/// apostrophe only does when it is genuinely intra-word (preceded by a letter,
+/// e.g. `l'paraiso`); a leading apostrophe run is wiki markup (`''`/`'''`) and
+/// acts as a boundary.
+fn word_extends_left(chars: &[char], start: usize) -> bool {
+    if start == 0 {
+        return false;
+    }
+    let c = chars[start - 1];
+    if c == '\'' {
+        return start >= 2 && chars[start - 2].is_alphabetic();
+    }
+    c.is_alphabetic() || c == '-'
+}
+
+/// Mirror of [`word_extends_left`] for the character immediately after the match
+/// (at `end`). An apostrophe only extends the word when followed by a letter
+/// (e.g. `paraiso'word`); a trailing `''`/`'''` markup run acts as a boundary.
+fn word_extends_right(chars: &[char], end: usize) -> bool {
+    if end >= chars.len() {
+        return false;
+    }
+    let c = chars[end];
+    if c == '\'' {
+        return end + 1 < chars.len() && chars[end + 1].is_alphabetic();
+    }
+    c.is_alphabetic() || c == '-'
 }
 
 fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
@@ -1390,8 +1415,55 @@ mod tests {
 
     use super::{
         add_ignored_word, delete_ignored_word, list_ignored_words, normalize_input_url,
-        AddIgnoredWordRequest, AppState,
+        replace_word_occurrences, AddIgnoredWordRequest, AppState,
     };
+
+    #[test]
+    fn replaces_word_wrapped_in_italic_markup() {
+        // The flagged word is clean (`paraiso`); the `''` italic markup must be
+        // preserved, so the user only ever types the replacement word.
+        let out = replace_word_occurrences("''El final del paraiso''", "paraiso", "paraíso", None);
+        assert_eq!(out, "''El final del paraíso''");
+    }
+
+    #[test]
+    fn replaces_word_wrapped_in_bold_markup() {
+        let out = replace_word_occurrences("'''paraiso'''", "paraiso", "paraíso", None);
+        assert_eq!(out, "'''paraíso'''");
+
+        // Bold + italic (five apostrophes) is preserved too.
+        let out = replace_word_occurrences("'''''paraiso'''''", "paraiso", "paraíso", None);
+        assert_eq!(out, "'''''paraíso'''''");
+    }
+
+    #[test]
+    fn replaces_plain_word_between_spaces() {
+        let out = replace_word_occurrences("el paraiso es bonito", "paraiso", "paraíso", None);
+        assert_eq!(out, "el paraíso es bonito");
+    }
+
+    #[test]
+    fn does_not_replace_inside_word_with_genuine_apostrophe() {
+        // A single apostrophe flanked by letters is intra-word: `paraiso` here is a
+        // substring of a longer token and must not be touched.
+        let out = replace_word_occurrences("l'paraiso", "paraiso", "paraíso", None);
+        assert_eq!(out, "l'paraiso");
+        let out = replace_word_occurrences("paraiso'word", "paraiso", "paraíso", None);
+        assert_eq!(out, "paraiso'word");
+    }
+
+    #[test]
+    fn occurrence_index_targets_the_right_match_with_markup() {
+        let text = "paraiso y ''paraiso''";
+        assert_eq!(
+            replace_word_occurrences(text, "paraiso", "paraíso", Some(0)),
+            "paraíso y ''paraiso''"
+        );
+        assert_eq!(
+            replace_word_occurrences(text, "paraiso", "paraíso", Some(1)),
+            "paraiso y ''paraíso''"
+        );
+    }
 
     #[test]
     fn converts_wiki_page_url_to_rest_html_url() {

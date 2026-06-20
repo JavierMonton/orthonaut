@@ -147,7 +147,9 @@ pub fn extract_wikitext_paragraphs_for_word(wikitext: &str, word: &str) -> Vec<S
             continue;
         }
         let contains_word = splitter.split(trimmed).any(|token| {
-            let t = token.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '-');
+            // Trim surrounding wiki markup too (the `''`/`'''` italic/bold runs that
+            // sit flush against a word), so `paraiso''` still matches `paraiso`.
+            let t = token.trim_matches(|c: char| !c.is_alphabetic() && c != '-');
             !t.is_empty() && t.to_lowercase() == word_lower
         });
         if contains_word {
@@ -267,7 +269,31 @@ fn should_skip_node(node: &ElementRef<'_>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_tokens_from_input;
+    use super::{extract_tokens_from_input, extract_wikitext_paragraphs_for_word};
+
+    #[test]
+    fn finds_wikitext_paragraph_for_word_wrapped_in_markup() {
+        // `paraiso''` (italic markup flush against the word) must still match `paraiso`,
+        // otherwise the frontend disables the Wikitext button.
+        let wikitext = "''El final del paraiso''";
+        let paragraphs = extract_wikitext_paragraphs_for_word(wikitext, "paraiso");
+        assert_eq!(paragraphs, vec![wikitext.to_string()]);
+
+        let bold = "Una '''paraiso''' destacada";
+        assert_eq!(
+            extract_wikitext_paragraphs_for_word(bold, "paraiso"),
+            vec![bold.to_string()]
+        );
+    }
+
+    #[test]
+    fn finds_wikitext_paragraph_for_plain_word() {
+        let wikitext = "el paraiso es bonito";
+        assert_eq!(
+            extract_wikitext_paragraphs_for_word(wikitext, "paraiso"),
+            vec![wikitext.to_string()]
+        );
+    }
 
     #[test]
     fn marks_anchor_text_words_as_links() {
