@@ -35,7 +35,7 @@ export default function AlwaysWrongWordsManager({ count, onAdd, onExport }: Alwa
   return (
     <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 shadow-sm">
       <p className="mb-2 text-sm font-medium text-orange-800">
-        Always wrong words{count > 0 ? ` (${count})` : ''}
+        Palabras siempre incorrectas{count > 0 ? ` (${count})` : ''}
       </p>
       <div className="flex gap-2">
         <input
@@ -43,7 +43,7 @@ export default function AlwaysWrongWordsManager({ count, onAdd, onExport }: Alwa
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleAdd() }}
-          placeholder="Add word..."
+          placeholder="Añadir palabra..."
           disabled={adding}
           className="flex-1 rounded-md border border-orange-300 bg-white px-3 py-1.5 text-sm outline-none ring-orange-500 transition focus:ring-2 disabled:opacity-60"
         />
@@ -53,7 +53,7 @@ export default function AlwaysWrongWordsManager({ count, onAdd, onExport }: Alwa
           disabled={adding || input.trim().length === 0}
           className="rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Add
+          Añadir
         </button>
         <button
           type="button"
@@ -61,7 +61,7 @@ export default function AlwaysWrongWordsManager({ count, onAdd, onExport }: Alwa
           disabled={exporting || count === 0}
           className="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Export to file
+          Exportar a archivo
         </button>
       </div>
     </div>

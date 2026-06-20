@@ -219,7 +219,7 @@ pub async fn check_url(
     Json(payload): Json<CheckRequest>,
 ) -> Result<Response, ApiError> {
     if payload.url.trim().is_empty() {
-        return Err(ApiError::BadRequest("url is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una url".to_string()));
     }
 
     let (session_id, set_cookie) = resolve_or_create_session(&headers);
@@ -234,7 +234,7 @@ pub async fn check_random_page(
 ) -> Result<Response, ApiError> {
     let language = payload.language.as_deref().unwrap_or("es");
     if language != "es" {
-        return Err(ApiError::BadRequest("only 'es' language is currently supported".to_string()));
+        return Err(ApiError::BadRequest("actualmente solo se admite el idioma 'es'".to_string()));
     }
 
     let random_url = fetch_random_wikipedia_url(
@@ -281,7 +281,7 @@ pub async fn add_ignored_word(
 ) -> Result<StatusCode, ApiError> {
     let normalized = crate::checker::normalize_ignored_word(&payload.word);
     if normalized.is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
 
     db::insert_ignored_word(state.db_path.as_str(), &normalized)
@@ -313,7 +313,7 @@ pub async fn export_ignored_words(
         file_content.push('\n');
     }
     fs::write(state.suppressions_path.as_str(), file_content)
-        .map_err(|e| ApiError::Internal(format!("failed to write suppressions file: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("no se pudo escribir el archivo de supresiones: {e}")))?;
 
     let mut checker = state.checker.lock().await;
     checker.replace_ignored_words(exported_words.clone());
@@ -399,10 +399,10 @@ pub async fn ignore_word_in_result(
     Path((id, word)): Path<(i64, String)>,
 ) -> Result<StatusCode, ApiError> {
     if word.trim().is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
     let session_id = extract_session_id(&headers)
-        .ok_or_else(|| ApiError::NotFound("result not found".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("resultado no encontrado".to_string()))?;
     db::remove_word_from_article(state.db_path.as_str(), &session_id, id, &word)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -414,12 +414,12 @@ pub async fn delete_result(
     Path(id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
     let session_id = extract_session_id(&headers)
-        .ok_or_else(|| ApiError::NotFound("result not found".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("resultado no encontrado".to_string()))?;
     let deleted = db::delete_article(state.db_path.as_str(), &session_id, id)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     if deleted == 0 {
-        return Err(ApiError::NotFound("result not found".to_string()));
+        return Err(ApiError::NotFound("resultado no encontrado".to_string()));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -431,7 +431,7 @@ pub async fn delete_ignored_word(
 ) -> Result<StatusCode, ApiError> {
     let normalized = crate::checker::normalize_ignored_word(&word);
     if normalized.is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
 
     db::delete_ignored_word(state.db_path.as_str(), &normalized)
@@ -456,7 +456,7 @@ pub async fn add_always_wrong_word(
 ) -> Result<StatusCode, ApiError> {
     let normalized = crate::checker::normalize_ignored_word(&payload.word);
     if normalized.is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
 
     db::insert_always_wrong_word(state.db_path.as_str(), &normalized)
@@ -473,7 +473,7 @@ pub async fn delete_always_wrong_word(
 ) -> Result<StatusCode, ApiError> {
     let normalized = crate::checker::normalize_ignored_word(&word);
     if normalized.is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
 
     db::delete_always_wrong_word(state.db_path.as_str(), &normalized)
@@ -489,7 +489,7 @@ pub async fn export_always_wrong_words(
 ) -> Result<Json<ExportAlwaysWrongWordsResponse>, ApiError> {
     if state.wordlist_page.is_some() {
         return Err(ApiError::BadRequest(
-            "always-wrong words are managed on the Wikipedia page in this deployment".to_string(),
+            "las palabras siempre incorrectas se gestionan en la página de Wikipedia en este despliegue".to_string(),
         ));
     }
 
@@ -499,14 +499,14 @@ pub async fn export_always_wrong_words(
     merged.extend(db_words);
     let exported_words: Vec<String> = merged.into_iter().collect();
 
-    let mut file_content = String::from("# Words always flagged as errors by Orthonaut.\n");
-    file_content.push_str("# Exported from DB + file merge.\n\n");
+    let mut file_content = String::from("# Palabras siempre marcadas como errores por Orthonaut.\n");
+    file_content.push_str("# Exportadas combinando la base de datos y el archivo.\n\n");
     if !exported_words.is_empty() {
         file_content.push_str(&exported_words.join("\n"));
         file_content.push('\n');
     }
     fs::write(state.always_wrong_path.as_str(), file_content)
-        .map_err(|e| ApiError::Internal(format!("failed to write always wrong words file: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("no se pudo escribir el archivo de palabras siempre incorrectas: {e}")))?;
 
     let mut checker = state.checker.lock().await;
     checker.replace_always_wrong_words(exported_words.clone());
@@ -527,7 +527,7 @@ pub async fn reload_wordlists(
 ) -> Result<Json<ReloadWordlistsResponse>, ApiError> {
     let Some(page) = state.wordlist_page.clone() else {
         return Err(ApiError::BadRequest(
-            "word lists are only reloadable in Wikipedia mode".to_string(),
+            "las listas de palabras solo se pueden recargar en modo Wikipedia".to_string(),
         ));
     };
 
@@ -570,7 +570,7 @@ pub async fn sandbox_check(
     Json(payload): Json<SandboxCheckRequest>,
 ) -> Result<Json<SandboxCheckResponse>, ApiError> {
     if payload.content.trim().is_empty() {
-        return Err(ApiError::BadRequest("content is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere contenido".to_string()));
     }
 
     let tokens = extractor::extract_tokens_from_input(&payload.content);
@@ -594,14 +594,14 @@ pub async fn get_word_contexts(
     Path((id, word)): Path<(i64, String)>,
 ) -> Result<Json<WordContextsResponse>, ApiError> {
     if word.trim().is_empty() {
-        return Err(ApiError::BadRequest("word is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una palabra".to_string()));
     }
 
     let session_id = extract_session_id(&headers)
-        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("artículo no encontrado".to_string()))?;
     let article = db::get_article(state.db_path.as_str(), &session_id, id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("artículo no encontrado".to_string()))?;
 
     let (fetch_url, _) = normalize_input_url(&article.page_url)?;
     let contact = state.wikimedia_contact.as_str();
@@ -630,7 +630,7 @@ pub async fn apply_edit(
     Json(payload): Json<ApplyEditRequest>,
 ) -> Result<Json<ApplyEditResponse>, ApiError> {
     if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
-        return Err(ApiError::BadRequest("word and replacement are required".to_string()));
+        return Err(ApiError::BadRequest("se requieren la palabra y el reemplazo".to_string()));
     }
 
     let session_id = extract_session_id(&headers);
@@ -640,10 +640,10 @@ pub async fn apply_edit(
         payload.article_id,
     )
     .map_err(|e| ApiError::Internal(e.to_string()))?
-    .ok_or_else(|| ApiError::NotFound("article not found".to_string()))?;
+    .ok_or_else(|| ApiError::NotFound("artículo no encontrado".to_string()))?;
 
     let title = extract_title_from_wiki_url(&article.page_url)
-        .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("no se puede determinar el título de la página a partir de la URL".to_string()))?;
 
     let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
     let (new_revision, username) = perform_wiki_edit(
@@ -684,7 +684,7 @@ pub async fn search_handler(
 ) -> Result<Json<Vec<SearchResponseItem>>, ApiError> {
     let query = payload.query.trim().to_string();
     if query.is_empty() {
-        return Err(ApiError::BadRequest("query is required".to_string()));
+        return Err(ApiError::BadRequest("se requiere una consulta".to_string()));
     }
 
     let search_term = format!("\"{}\"", query);
@@ -713,7 +713,7 @@ pub async fn search_handler(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(ApiError::Internal(format!("Wikipedia search returned {status}: {body}")));
+        return Err(ApiError::Internal(format!("la búsqueda de Wikipedia devolvió {status}: {body}")));
     }
 
     let payload: WikiSearchResponse = response.json().await.map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -760,7 +760,7 @@ pub async fn get_search_contexts(
     Json(payload): Json<SearchContextsRequest>,
 ) -> Result<Json<WordContextsResponse>, ApiError> {
     if payload.url.trim().is_empty() || payload.word.trim().is_empty() {
-        return Err(ApiError::BadRequest("url and word are required".to_string()));
+        return Err(ApiError::BadRequest("se requieren la url y la palabra".to_string()));
     }
 
     let (fetch_url, display_url) = normalize_input_url(&payload.url)?;
@@ -791,12 +791,12 @@ pub async fn apply_search_edit(
     Json(payload): Json<ApplySearchEditRequest>,
 ) -> Result<Json<ApplyEditResponse>, ApiError> {
     if payload.word.trim().is_empty() || payload.replacement.trim().is_empty() {
-        return Err(ApiError::BadRequest("word and replacement are required".to_string()));
+        return Err(ApiError::BadRequest("se requieren la palabra y el reemplazo".to_string()));
     }
 
     let (_, display_url) = normalize_input_url(&payload.url)?;
     let title = extract_title_from_wiki_url(&display_url)
-        .ok_or_else(|| ApiError::BadRequest("cannot determine page title from URL".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("no se puede determinar el título de la página a partir de la URL".to_string()))?;
 
     let session_id = extract_session_id(&headers);
     let access_token = resolve_access_token(&state, session_id.as_deref()).await?;
@@ -841,24 +841,24 @@ async fn resolve_access_token(state: &AppState, session_id: Option<&str>) -> Res
     let oauth_config = state
         .oauth_config
         .as_ref()
-        .ok_or_else(|| ApiError::BadRequest("OAuth is not configured".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("OAuth no está configurado".to_string()))?;
 
     if let Some(ref static_token) = oauth_config.token {
         return Ok(static_token.clone());
     }
 
     let session_id = session_id
-        .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("no has iniciado sesión en Wikipedia".to_string()))?;
 
     let token = db::get_oauth_token(state.db_path.as_str(), session_id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::BadRequest("not logged in to Wikipedia".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("no has iniciado sesión en Wikipedia".to_string()))?;
 
     if is_token_expired(&token.expires_at) {
         let refresh_token = token
             .refresh_token
             .as_deref()
-            .ok_or_else(|| ApiError::BadRequest("session expired, please log in again".to_string()))?;
+            .ok_or_else(|| ApiError::BadRequest("la sesión ha expirado, inicia sesión de nuevo".to_string()))?;
         let new_token = oauth::refresh_access_token(
             &state.http_client,
             refresh_token,
@@ -901,7 +901,7 @@ async fn perform_wiki_edit(
     let new_wikitext = replace_word_occurrences(&wikitext, word, replacement, occurrence_index);
     if new_wikitext == wikitext {
         return Err(ApiError::BadRequest(format!(
-            "word '{}' not found in page wikitext",
+            "no se encontró la palabra '{}' en el wikitexto de la página",
             word
         )));
     }
@@ -1237,7 +1237,7 @@ fn word_extends_right(chars: &[char], end: usize) -> bool {
 
 fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
     let parsed = reqwest::Url::parse(input)
-        .map_err(|_| ApiError::BadRequest("invalid url format".to_string()))?;
+        .map_err(|_| ApiError::BadRequest("formato de url no válido".to_string()))?;
 
     let Some(host) = parsed.host_str() else {
         return Ok((input.to_string(), input.to_string()));
@@ -1250,7 +1250,7 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
     let path = parsed.path();
     if let Some(title) = path.strip_prefix("/wiki/") {
         if title.is_empty() {
-            return Err(ApiError::BadRequest("wikipedia page url is missing title".to_string()));
+            return Err(ApiError::BadRequest("a la url de la página de Wikipedia le falta el título".to_string()));
         }
         let encoded = title.replace('/', "%2F");
         return Ok((
@@ -1261,7 +1261,7 @@ fn normalize_input_url(input: &str) -> Result<(String, String), ApiError> {
 
     if let Some(title) = path.strip_prefix("/api/rest_v1/page/html/") {
         if title.is_empty() {
-            return Err(ApiError::BadRequest("wikipedia rest url is missing title".to_string()));
+            return Err(ApiError::BadRequest("a la url REST de Wikipedia le falta el título".to_string()));
         }
         return Ok((
             build_url(&parsed, &format!("/api/rest_v1/page/html/{title}")),
@@ -1355,11 +1355,11 @@ async fn fetch_random_wikipedia_url(
         wikimedia_contact,
     )
     .await
-    .map_err(|e| ApiError::BadRequest(format!("failed to fetch random page: {e}")))?;
+    .map_err(|e| ApiError::BadRequest(format!("no se pudo obtener una página aleatoria: {e}")))?;
 
     if !response.status().is_success() {
         return Err(ApiError::BadRequest(format!(
-            "random page upstream returned status {}",
+            "el servicio de página aleatoria devolvió el estado {}",
             response.status()
         )));
     }
@@ -1367,13 +1367,13 @@ async fn fetch_random_wikipedia_url(
     let payload: RandomApiResponse = response
         .json()
         .await
-        .map_err(|e| ApiError::BadRequest(format!("invalid random page response: {e}")))?;
+        .map_err(|e| ApiError::BadRequest(format!("respuesta de página aleatoria no válida: {e}")))?;
     let page = payload
         .query
         .random
         .into_iter()
         .next()
-        .ok_or_else(|| ApiError::BadRequest("random page response was empty".to_string()))?;
+        .ok_or_else(|| ApiError::BadRequest("la respuesta de página aleatoria estaba vacía".to_string()))?;
     let encoded = page.title.replace(' ', "_");
     Ok(format!("https://{language}.wikipedia.org/wiki/{encoded}"))
 }
@@ -1383,7 +1383,7 @@ fn load_existing_suppression_words(path: &str) -> Result<BTreeSet<String>, ApiEr
         return Ok(BTreeSet::new());
     }
     let content = fs::read_to_string(path)
-        .map_err(|e| ApiError::Internal(format!("failed to read suppressions file: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("no se pudo leer el archivo de supresiones: {e}")))?;
     Ok(content
         .lines()
         .map(str::trim)

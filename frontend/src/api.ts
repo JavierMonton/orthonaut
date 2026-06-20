@@ -16,7 +16,7 @@ import type {
 export async function getResults(): Promise<ArticleResult[]> {
   const response = await fetch('/api/results')
   if (!response.ok) {
-    throw new Error('Failed to load results')
+    throw new Error('No se pudieron cargar los resultados')
   }
   return response.json()
 }
@@ -29,7 +29,7 @@ export async function checkUrl(url: string): Promise<CheckResponse> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to check URL')
+    throw new Error(payload.error ?? 'No se pudo revisar la URL')
   }
   return response.json()
 }
@@ -42,7 +42,7 @@ export async function checkRandomPage(): Promise<CheckResponse> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to check random page')
+    throw new Error(payload.error ?? 'No se pudo revisar la página aleatoria')
   }
   return response.json()
 }
@@ -52,7 +52,7 @@ export async function deleteResult(id: number): Promise<void> {
     method: 'DELETE',
   })
   if (!response.ok) {
-    throw new Error('Failed to delete result')
+    throw new Error('No se pudo eliminar el resultado')
   }
 }
 
@@ -62,7 +62,7 @@ export async function ignoreWordInResult(id: number, word: string): Promise<void
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to ignore word')
+    throw new Error(payload.error ?? 'No se pudo ignorar la palabra')
   }
 }
 
@@ -75,7 +75,7 @@ export async function sandboxCheck(content: string): Promise<SandboxCheckRespons
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to check sandbox content')
+    throw new Error(payload.error ?? 'No se pudo revisar el contenido del espacio de pruebas')
   }
 
   return response.json()
@@ -84,7 +84,7 @@ export async function sandboxCheck(content: string): Promise<SandboxCheckRespons
 export async function getIgnoredWords(): Promise<IgnoredWordsResponse> {
   const response = await fetch('/api/ignored-words')
   if (!response.ok) {
-    throw new Error('Failed to load ignored words')
+    throw new Error('No se pudieron cargar las palabras ignoradas')
   }
   return response.json()
 }
@@ -97,7 +97,7 @@ export async function addIgnoredWord(word: string): Promise<void> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to add ignored word')
+    throw new Error(payload.error ?? 'No se pudo añadir la palabra ignorada')
   }
 }
 
@@ -107,14 +107,14 @@ export async function deleteIgnoredWord(word: string): Promise<void> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to remove ignored word')
+    throw new Error(payload.error ?? 'No se pudo eliminar la palabra ignorada')
   }
 }
 
 export async function getAlwaysWrongWords(): Promise<AlwaysWrongWordsResponse> {
   const response = await fetch('/api/always-wrong-words')
   if (!response.ok) {
-    throw new Error('Failed to load always wrong words')
+    throw new Error('No se pudieron cargar las palabras siempre incorrectas')
   }
   return response.json()
 }
@@ -127,7 +127,7 @@ export async function addAlwaysWrongWord(word: string): Promise<void> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to add always wrong word')
+    throw new Error(payload.error ?? 'No se pudo añadir la palabra siempre incorrecta')
   }
 }
 
@@ -137,7 +137,7 @@ export async function deleteAlwaysWrongWord(word: string): Promise<void> {
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to remove always wrong word')
+    throw new Error(payload.error ?? 'No se pudo eliminar la palabra siempre incorrecta')
   }
 }
 
@@ -147,7 +147,7 @@ export async function exportAlwaysWrongWords(): Promise<ExportAlwaysWrongWordsRe
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to export always wrong words')
+    throw new Error(payload.error ?? 'No se pudieron exportar las palabras siempre incorrectas')
   }
   return response.json()
 }
@@ -158,7 +158,7 @@ export async function exportIgnoredWords(): Promise<ExportIgnoredWordsResponse> 
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to export ignored words')
+    throw new Error(payload.error ?? 'No se pudieron exportar las palabras ignoradas')
   }
   return response.json()
 }
@@ -167,7 +167,7 @@ export async function getWordContexts(id: number, word: string): Promise<WordCon
   const response = await fetch(`/api/results/${id}/contexts/${encodeURIComponent(word)}`)
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to load word contexts')
+    throw new Error(payload.error ?? 'No se pudieron cargar los contextos de la palabra')
   }
   return response.json()
 }
@@ -175,7 +175,7 @@ export async function getWordContexts(id: number, word: string): Promise<WordCon
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
   const response = await fetch('/api/auth/status')
   if (!response.ok) {
-    throw new Error('Failed to get auth status')
+    throw new Error('No se pudo obtener el estado de la sesión')
   }
   return response.json()
 }
@@ -187,7 +187,7 @@ export function loginWithWikipedia(): void {
 export async function logout(): Promise<void> {
   const response = await fetch('/api/auth/logout', { method: 'POST' })
   if (!response.ok) {
-    throw new Error('Failed to log out')
+    throw new Error('No se pudo cerrar la sesión')
   }
 }
 
@@ -204,7 +204,7 @@ export async function applyEdit(
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to apply edit')
+    throw new Error(payload.error ?? 'No se pudo aplicar la edición')
   }
   return response.json()
 }
@@ -213,7 +213,7 @@ export async function getStats(): Promise<EditCount[]> {
   const response = await fetch('/api/stats')
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to load stats')
+    throw new Error(payload.error ?? 'No se pudieron cargar las estadísticas')
   }
   return response.json()
 }
@@ -226,7 +226,7 @@ export async function searchWikipedia(query: string, limit = 50, offset = 0): Pr
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to search Wikipedia')
+    throw new Error(payload.error ?? 'No se pudo buscar en Wikipedia')
   }
   return response.json()
 }
@@ -239,7 +239,7 @@ export async function getSearchContexts(url: string, word: string): Promise<Word
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to load search contexts')
+    throw new Error(payload.error ?? 'No se pudieron cargar los contextos de búsqueda')
   }
   return response.json()
 }
@@ -257,7 +257,7 @@ export async function applySearchEdit(
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.error ?? 'Failed to apply search edit')
+    throw new Error(payload.error ?? 'No se pudo aplicar la edición de búsqueda')
   }
   return response.json()
 }

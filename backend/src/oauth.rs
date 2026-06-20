@@ -75,7 +75,7 @@ pub async fn auth_login(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     let Some(ref oauth_config) = state.oauth_config else {
-        return (StatusCode::BAD_REQUEST, "OAuth is not configured in orthonaut.toml").into_response();
+        return (StatusCode::BAD_REQUEST, "OAuth no está configurado en orthonaut.toml").into_response();
     };
 
     if oauth_config.token.is_some() {

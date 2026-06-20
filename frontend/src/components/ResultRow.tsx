@@ -59,7 +59,7 @@ export default function ResultRow({
   const [editState, setEditState] = useState<Record<string, EditState>>({})
 
   const handleDelete = async () => {
-    const accepted = window.confirm(`Delete "${result.title}"?`)
+    const accepted = window.confirm(`¿Eliminar "${result.title}"?`)
     if (!accepted) return
     await onDelete(result.id)
   }
@@ -104,7 +104,7 @@ export default function ResultRow({
         ...prev,
         [word]: {
           loading: false,
-          error: err instanceof Error ? err.message : 'Edit failed',
+          error: err instanceof Error ? err.message : 'No se pudo aplicar la edición',
         },
       }))
     }
@@ -125,7 +125,7 @@ export default function ResultRow({
             {result.title}
           </a>
           {result.revision_id && (
-            <p className="mt-1 text-xs text-slate-500">Revision: {result.revision_id}</p>
+            <p className="mt-1 text-xs text-slate-500">Revisión: {result.revision_id}</p>
           )}
         </div>
         <Button
@@ -133,12 +133,12 @@ export default function ResultRow({
           onClick={handleDelete}
           className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700"
         >
-          Delete
+          Eliminar
         </Button>
       </div>
 
       {visibleWords.length === 0 ? (
-        <p className="text-sm text-slate-500">All words in this result are currently ignored.</p>
+        <p className="text-sm text-slate-500">Todas las palabras de este resultado están ignoradas actualmente.</p>
       ) : (
         <ul className="space-y-2 text-sm text-slate-700">
           {visibleWords.map((word) => {
@@ -160,17 +160,17 @@ export default function ResultRow({
                       onClick={() => void handleExpand(word)}
                       className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-blue-700"
                     >
-                      {isExpanded ? 'Collapse' : 'Expand'}
+                      {isExpanded ? 'Contraer' : 'Expandir'}
                     </Button>
                     {onMarkValid && (
                       <Button
                         type="button"
                         onClick={() => void onMarkValid(word)}
                         disabled={!isLoggedIn}
-                        title={isLoggedIn ? undefined : 'Log in to Wikipedia to mark words as valid.'}
+                        title={isLoggedIn ? undefined : 'Inicia sesión en Wikipedia para marcar palabras como válidas.'}
                         className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300"
                       >
-                        Valid word
+                        Palabra válida
                       </Button>
                     )}
                     {onIgnore && (
@@ -179,7 +179,7 @@ export default function ResultRow({
                         onClick={() => onIgnore(word)}
                         className="rounded bg-slate-400 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-500"
                       >
-                        Ignore
+                        Ignorar
                       </Button>
                     )}
                   </div>
@@ -188,14 +188,14 @@ export default function ResultRow({
                 {isExpanded && (
                   <div className="mt-1 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                     {isLoadingCtx ? (
-                      <p className="text-slate-500">Loading context…</p>
+                      <p className="text-slate-500">Cargando contexto…</p>
                     ) : paragraphs.length === 0 && wikitextParagraphs.length === 0 ? (
-                      <p className="text-slate-500">No paragraph context found for this word.</p>
+                      <p className="text-slate-500">No se encontró ningún párrafo de contexto para esta palabra.</p>
                     ) : (
                       <>
                         <div className="mb-2 flex items-center gap-3">
                           <p className="text-slate-500">
-                            Paragraph {idx + 1} of {mode === 'plain' ? paragraphs.length : wikitextParagraphs.length}
+                            Párrafo {idx + 1} de {mode === 'plain' ? paragraphs.length : wikitextParagraphs.length}
                           </p>
                           <div className="flex rounded border border-slate-300 overflow-hidden text-xs">
                             <button
@@ -206,7 +206,7 @@ export default function ResultRow({
                               }}
                               className={`px-2 py-0.5 transition ${mode === 'plain' ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
                             >
-                              Plain
+                              Texto
                             </button>
                             <button
                               type="button"
@@ -238,7 +238,7 @@ export default function ResultRow({
                               disabled={idx === 0}
                               className="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              Previous
+                              Anterior
                             </button>
                             <button
                               type="button"
@@ -252,7 +252,7 @@ export default function ResultRow({
                               disabled={idx === (mode === 'plain' ? paragraphs : wikitextParagraphs).length - 1}
                               className="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              Next
+                              Siguiente
                             </button>
                           </div>
                         )}
@@ -260,17 +260,17 @@ export default function ResultRow({
                         <div className="mt-3 border-t border-slate-200 pt-3">
                           {!oauthConfigured ? (
                             <p className="text-slate-400 italic">
-                              Add <code>[oauth]</code> to orthonaut.toml to enable editing.
+                              Añade <code>[oauth]</code> a orthonaut.toml para habilitar la edición.
                             </p>
                           ) : edit?.ok ? (
                             <p className="text-green-700">
-                              Edit applied — new revision {edit.revision}. Check the article on
+                              Edición aplicada — nueva revisión {edit.revision}. Revisa el artículo en
                               Wikipedia.
                             </p>
                           ) : isLoggedIn ? (
                             <>
                               <label className="mb-1 block text-xs font-medium text-slate-600">
-                                Replace with:
+                                Reemplazar por:
                               </label>
                               <div className="flex gap-2">
                                 <input
@@ -291,7 +291,7 @@ export default function ResultRow({
                                   }
                                   className="rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  {edit?.loading ? 'Saving…' : 'Apply edit'}
+                                  {edit?.loading ? 'Guardando…' : 'Aplicar edición'}
                                 </button>
                                 <button
                                   type="button"
@@ -303,7 +303,7 @@ export default function ResultRow({
                                   }
                                   className="rounded bg-slate-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  Apply to all
+                                  Aplicar a todo
                                 </button>
                               </div>
                               {edit?.error && (
@@ -312,7 +312,7 @@ export default function ResultRow({
                             </>
                           ) : (
                             <p className="text-slate-500">
-                              Log in to Wikipedia to apply edits.
+                              Inicia sesión en Wikipedia para aplicar ediciones.
                             </p>
                           )}
                         </div>

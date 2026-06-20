@@ -25,6 +25,7 @@ import AlwaysWrongWordsManager from './components/AlwaysWrongWordsManager'
 import CheckForm from './components/CheckForm'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultRow from './components/ResultRow'
+import { DOCUMENTATION_URL } from './constants'
 import type { ArticleResult, EditCount, SandboxCheckResponse, SearchResult } from './types'
 
 type Section = 'checker' | 'sandbox' | 'search' | 'stats'
@@ -71,17 +72,17 @@ function App() {
 
         const params = new URLSearchParams(window.location.search)
         if (params.get('auth') === 'success') {
-          setSuccess('Logged in to Wikipedia successfully')
+          setSuccess('Sesión iniciada en Wikipedia correctamente')
           window.history.replaceState({}, '', window.location.pathname)
         } else if (params.get('auth') === 'not_autoconfirmed') {
-          setError('Your Wikipedia account must be autoconfirmed (≈50 edits and 4+ days old) to log in here.')
+          setError('Tu cuenta de Wikipedia debe estar autoconfirmada (≈50 ediciones y más de 4 días de antigüedad) para iniciar sesión aquí.')
           window.history.replaceState({}, '', window.location.pathname)
         } else if (params.get('auth') === 'error') {
-          setError('Wikipedia login failed. Please try again.')
+          setError('Error al iniciar sesión en Wikipedia. Inténtalo de nuevo.')
           window.history.replaceState({}, '', window.location.pathname)
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data')
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar los datos')
       }
     })()
   }, [])
@@ -89,11 +90,16 @@ function App() {
   // Refresh the leaderboard each time the Stats tab is opened so counts stay current.
   useEffect(() => {
     if (section !== 'stats') return
-    setStatsLoading(true)
-    void getStats()
-      .then(setStats)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load stats'))
-      .finally(() => setStatsLoading(false))
+    void (async () => {
+      setStatsLoading(true)
+      try {
+        setStats(await getStats())
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar las estadísticas')
+      } finally {
+        setStatsLoading(false)
+      }
+    })()
   }, [section])
 
   const sortedResults = useMemo(() => results, [results])
@@ -126,7 +132,7 @@ function App() {
       applyCheckResponse(response)
       setUrl('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Check request failed')
+      setError(err instanceof Error ? err.message : 'Falló la solicitud de revisión')
     } finally {
       setLoading(false)
     }
@@ -140,7 +146,7 @@ function App() {
       const response = await checkRandomPage()
       applyCheckResponse(response)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Random check request failed')
+      setError(err instanceof Error ? err.message : 'Falló la solicitud de revisión aleatoria')
     } finally {
       setLoading(false)
     }
@@ -154,10 +160,10 @@ function App() {
       const response = await sandboxCheck(sandboxInput)
       setSandboxResult(response)
       if (response.misspelled_count === 0) {
-        setSuccess('No se encontraron errores ortograficos en el contenido del sandbox')
+        setSuccess('No se encontraron errores ortográficos en el contenido del espacio de pruebas')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sandbox check request failed')
+      setError(err instanceof Error ? err.message : 'Falló la solicitud de revisión del espacio de pruebas')
     } finally {
       setLoading(false)
     }
@@ -169,7 +175,7 @@ function App() {
       await deleteResult(id)
       setResults((prev) => prev.filter((entry) => entry.id !== id))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+      setError(err instanceof Error ? err.message : 'Falló la eliminación')
     }
   }
 
@@ -212,9 +218,9 @@ function App() {
         }
       })
       setPendingValidExports((prev) => prev + 1)
-      setSuccess(`"${normalized}" was added as a valid word`)
+      setSuccess(`"${normalized}" se añadió como palabra válida`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save valid word')
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la palabra válida')
     }
   }
 
@@ -232,7 +238,7 @@ function App() {
           .filter((entry) => entry.wrong_words.length > 0),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to ignore word')
+      setError(err instanceof Error ? err.message : 'No se pudo ignorar la palabra')
     }
   }
 
@@ -240,9 +246,9 @@ function App() {
     try {
       await logout()
       setIsLoggedIn(false)
-      setSuccess('Logged out from Wikipedia')
+      setSuccess('Sesión cerrada en Wikipedia')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Logout failed')
+      setError(err instanceof Error ? err.message : 'Falló el cierre de sesión')
     }
   }
 
@@ -254,12 +260,12 @@ function App() {
       const response = await exportIgnoredWords()
       setPendingValidExports(0)
       if (wikipediaWordlists) {
-        setSuccess(`Exported ${response.exported_count} valid words to ${response.path}`)
+        setSuccess(`Se exportaron ${response.exported_count} palabras válidas a ${response.path}`)
       } else {
-        setSuccess(`Exported ${response.exported_count} ignored words to ${response.path}`)
+        setSuccess(`Se exportaron ${response.exported_count} palabras ignoradas a ${response.path}`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export ignored words')
+      setError(err instanceof Error ? err.message : 'No se pudieron exportar las palabras ignoradas')
     } finally {
       setLoading(false)
     }
@@ -273,9 +279,9 @@ function App() {
         if (prev.includes(word)) return prev
         return [...prev, word].sort((a, b) => a.localeCompare(b))
       })
-      setSuccess(`"${word}" will now always be flagged as an error`)
+      setSuccess(`"${word}" se marcará siempre como un error`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add always wrong word')
+      setError(err instanceof Error ? err.message : 'No se pudo añadir la palabra siempre incorrecta')
     }
   }
 
@@ -283,9 +289,9 @@ function App() {
     setError(null)
     try {
       const response = await exportAlwaysWrongWords()
-      setSuccess(`Exported ${response.exported_count} always wrong words to ${response.path}`)
+      setSuccess(`Se exportaron ${response.exported_count} palabras siempre incorrectas a ${response.path}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export always wrong words')
+      setError(err instanceof Error ? err.message : 'No se pudieron exportar las palabras siempre incorrectas')
     }
   }
 
@@ -301,10 +307,10 @@ function App() {
       setSearchTerm(query)
       setSearchOffset(searchLimit)
       if (results.length === 0) {
-        setSuccess(`No results found for "${query}"`)
+        setSuccess(`No se encontraron resultados para "${query}"`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search request failed')
+      setError(err instanceof Error ? err.message : 'Falló la solicitud de búsqueda')
     } finally {
       setLoading(false)
     }
@@ -321,22 +327,23 @@ function App() {
       })
       setSearchOffset((prev) => prev + searchLimit)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search request failed')
+      setError(err instanceof Error ? err.message : 'Falló la solicitud de búsqueda')
     } finally {
       setLoadingMore(false)
     }
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-4xl p-4 sm:p-6">
-      {loading && <LoadingSpinner label="Checking article orthography..." />}
+    <div className="flex min-h-screen flex-col">
+    <main className="mx-auto w-full max-w-4xl flex-1 p-4 sm:p-6">
+      {loading && <LoadingSpinner label="Revisando la ortografía del artículo..." />}
 
       <section className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="mb-1 text-2xl font-bold text-slate-900">Orthonaut</h1>
             <p className="text-sm text-slate-600">
-              Check Spanish orthography from Wikipedia URLs or manual text/HTML sandbox input.
+              Revisa la ortografía en español desde URLs de Wikipedia o introduciendo texto/HTML en el espacio de pruebas.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -347,7 +354,7 @@ function App() {
                   onClick={() => void handleLogout()}
                   className="rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-300"
                 >
-                  Logout Wikipedia
+                  Cerrar sesión en Wikipedia
                 </button>
               ) : (
                 <button
@@ -355,15 +362,15 @@ function App() {
                   onClick={loginWithWikipedia}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700"
                 >
-                  Login with Wikipedia
+                  Iniciar sesión con Wikipedia
                 </button>
               )
             ) : (
               <span
-                title="Add [oauth] section to orthonaut.toml to enable editing"
+                title="Añade la sección [oauth] a orthonaut.toml para habilitar la edición"
                 className="cursor-help rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
               >
-                Editing not configured
+                Edición no configurada
               </span>
             )}
           </div>
@@ -379,19 +386,7 @@ function App() {
               section === 'checker' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
             }`}
           >
-            Checker
-          </a>
-          <a
-            href="#sandbox"
-            onClick={(event) => {
-              event.preventDefault()
-              setSection('sandbox')
-            }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              section === 'sandbox' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-            }`}
-          >
-            Sandbox
+            Revisor
           </a>
           <a
             href="#search"
@@ -403,7 +398,19 @@ function App() {
               section === 'search' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
             }`}
           >
-            Search/Replace
+            Buscar/Reemplazar
+          </a>
+          <a
+            href="#sandbox"
+            onClick={(event) => {
+              event.preventDefault()
+              setSection('sandbox')
+            }}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              section === 'sandbox' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+            }`}
+          >
+            Pruebas
           </a>
           {/* Stats tab is hidden from the UI for now; the `/api/stats` endpoint stays available. */}
         </div>
@@ -432,7 +439,7 @@ function App() {
                   }
                   className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Export valid words to Wikipedia
+                  Exportar palabras válidas a Wikipedia
                   {pendingValidExports > 0 ? ` (${pendingValidExports})` : ''}
                 </button>
               ) : (
@@ -443,7 +450,7 @@ function App() {
                     disabled={loading}
                     className="self-start rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Export valid words to file
+                    Exportar palabras válidas a archivo
                   </button>
                   {/* Manual wrong-word management is a local-dev convenience; in
                       production (Toolforge) wrong words come from the Wikipedia page. */}
@@ -474,7 +481,7 @@ function App() {
           <section className="space-y-3">
             {sortedResults.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
-                No stored orthography findings yet.
+                Aún no hay resultados de ortografía guardados.
               </div>
             ) : (
               sortedResults.map((result) => (
@@ -498,13 +505,13 @@ function App() {
         <>
           <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <label htmlFor="sandbox-input" className="mb-2 block text-sm font-medium text-slate-800">
-              Paste plain text or HTML
+              Pega texto plano o HTML
             </label>
             <textarea
               id="sandbox-input"
               value={sandboxInput}
               onChange={(event) => setSandboxInput(event.target.value)}
-              placeholder="<p>Texto para revisar ortografia...</p>"
+              placeholder="<p>Texto para revisar ortografía...</p>"
               className="min-h-72 w-full rounded-md border border-slate-300 p-3 text-sm outline-none ring-blue-500 transition focus:ring-2"
               disabled={loading}
             />
@@ -515,7 +522,7 @@ function App() {
                 disabled={loading || sandboxInput.trim().length === 0}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Check sandbox content
+                Revisar contenido del espacio de pruebas
               </button>
             </div>
           </section>
@@ -535,11 +542,11 @@ function App() {
           {sandboxResult && (
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="mb-2 text-sm text-slate-700">
-                Total words: <span className="font-semibold">{sandboxResult.total_words}</span> - Misspelled:{' '}
+                Palabras totales: <span className="font-semibold">{sandboxResult.total_words}</span> - Incorrectas:{' '}
                 <span className="font-semibold">{visibleSandboxWords.length}</span>
               </p>
               {visibleSandboxWords.length === 0 ? (
-                <p className="text-sm text-slate-600">No orthography issues found.</p>
+                <p className="text-sm text-slate-600">No se encontraron problemas de ortografía.</p>
               ) : (
                 <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {visibleSandboxWords.map((word) => (
@@ -549,10 +556,10 @@ function App() {
                         type="button"
                         onClick={() => void handleMarkValidWord(word)}
                         disabled={!isLoggedIn}
-                        title={isLoggedIn ? undefined : 'Log in to Wikipedia to mark words as valid.'}
+                        title={isLoggedIn ? undefined : 'Inicia sesión en Wikipedia para marcar palabras como válidas.'}
                         className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300"
                       >
-                        Valid word
+                        Palabra válida
                       </button>
                     </li>
                   ))}
@@ -567,7 +574,7 @@ function App() {
         <>
           <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <label htmlFor="search-input" className="mb-2 block text-sm font-medium text-slate-800">
-              Search term (exact match)
+              Término de búsqueda (coincidencia exacta)
             </label>
             <div className="flex gap-2">
               <input
@@ -576,7 +583,7 @@ function App() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 onKeyDown={(event) => { if (event.key === 'Enter') void handleSearchSubmit() }}
-                placeholder="e.g. categoria"
+                placeholder="p. ej. categoria"
                 className="flex-1 rounded-md border border-slate-300 p-2 text-sm outline-none ring-blue-500 transition focus:ring-2"
                 disabled={loading}
               />
@@ -585,10 +592,10 @@ function App() {
                 onChange={(event) => setSearchLimit(Number(event.target.value))}
                 disabled={loading}
                 className="rounded-md border border-slate-300 p-2 text-sm outline-none ring-blue-500 transition focus:ring-2"
-                title="Number of Wikipedia pages to analyze"
+                title="Número de páginas de Wikipedia a analizar"
               >
                 {[10, 20, 50, 100, 200].map((n) => (
-                  <option key={n} value={n}>{n} pages</option>
+                  <option key={n} value={n}>{n} páginas</option>
                 ))}
               </select>
               <button
@@ -597,7 +604,7 @@ function App() {
                 disabled={loading || searchQuery.trim().length === 0}
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Search Wikipedia
+                Buscar en Wikipedia
               </button>
             </div>
           </section>
@@ -648,7 +655,7 @@ function App() {
                 disabled={loadingMore}
                 className="rounded-md border border-slate-300 bg-white px-6 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loadingMore ? 'Loading…' : `Load more (next ${searchLimit} pages)`}
+                {loadingMore ? 'Cargando…' : `Cargar más (siguientes ${searchLimit} páginas)`}
               </button>
             </div>
           )}
@@ -696,7 +703,34 @@ function App() {
           )}
         </section>
       )}
+
     </main>
+
+    <footer className="border-t border-slate-200 bg-slate-200/70 py-6 text-center text-sm text-slate-600">
+      <div className="mx-auto w-full max-w-4xl px-4 sm:px-6">
+        <a
+          href={DOCUMENTATION_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 font-medium text-slate-700 transition hover:text-slate-900 hover:underline"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M3 5l3.5 14L12 9l5.5 10L21 5" />
+          </svg>
+          Documentación
+        </a>
+      </div>
+    </footer>
+    </div>
   )
 }
 
