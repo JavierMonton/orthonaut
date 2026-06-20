@@ -906,14 +906,24 @@ async fn perform_wiki_edit(
         )));
     }
 
+    let trimmed = replacement.trim();
+    let summary = if trimmed.starts_with("[[") && trimmed.ends_with("]]") {
+        format!(
+            "Añadir enlace con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]] a «{}»",
+            word
+        )
+    } else {
+        format!(
+            "Corrección ortográfica con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]]: «{}» → «{}»",
+            word, replacement
+        )
+    };
+
     submit_wiki_edit(
         client,
         title,
         &new_wikitext,
-        &format!(
-            "Corrección ortográfica con [[Usuario:Jmlarraz/Orthonaut|Orthonaut]]: «{}» → «{}»",
-            word, replacement
-        ),
+        &summary,
         latest_id,
         access_token,
         wikimedia_contact,

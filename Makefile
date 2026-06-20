@@ -27,6 +27,14 @@ dev:
 		echo "Installing frontend dependencies ..."; \
 		(cd frontend && npm install); \
 	fi; \
+	if [ ! -f "$(CURDIR)/orthonaut.toml" ]; then \
+		echo "Config file not found at $(CURDIR)/orthonaut.toml"; \
+		echo "Copy orthonaut.toml.example to orthonaut.toml and fill it in."; \
+		exit 1; \
+	fi; \
+	export ORTHONAUT_CONFIG_PATH="$(CURDIR)/orthonaut.toml"; \
+	export ORTHONAUT_DB_PATH="$(CURDIR)/backend/orthonaut.db"; \
+	export ORTHONAUT_DICT_DIR="$(CURDIR)/backend/dictionaries"; \
 	BACK_LOG="$$(mktemp)"; \
 	echo "Starting backend on http://localhost:3000 ..."; \
 	(cd backend && cargo run) > "$$BACK_LOG" 2>&1 & \

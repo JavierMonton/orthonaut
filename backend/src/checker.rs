@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use zspell::Dictionary;
+use spellbook::Dictionary;
 
 use crate::extractor::ExtractedToken;
 
@@ -39,10 +39,11 @@ impl SpellChecker {
         let suppressed_words = load_suppressed_words(dict_dir)?;
         let always_wrong_words = load_always_wrong_from_file(dict_dir)?;
 
-        let dict = zspell::builder()
-            .config_str(aff)
-            .dict_str(dic)
-            .build()
+        // spellbook is a pure-Rust port of Nuspell (the modern Hunspell reference engine).
+        // It correctly applies affix features the previous engine (zspell) silently dropped,
+        // e.g. empty-append suffix rules (`SFX … r 0 …`, Spanish 3rd-person verb forms) and
+        // affix continuation classes (`SFX … ción/S …`, derivations like "activación").
+        let dict = Dictionary::new(aff, dic)
             .map_err(|e| CheckerError::DictBuild(e.to_string()))?;
 
         Ok(Self {
@@ -72,7 +73,7 @@ impl SpellChecker {
             let is_valid = if let Some(cached) = self.cache.get(&token.normalized) {
                 *cached
             } else {
-                let valid = self.dict.check_word(&token.normalized);
+                let valid = self.dict.check(&token.normalized);
                 self.cache.insert(token.normalized.clone(), valid);
                 valid
             };
@@ -384,6 +385,28 @@ mod tests {
         assert!(wrong.contains(&"palabraa".to_string()));
         assert!(!wrong.contains(&"mustafá".to_string()));
         assert!(!wrong.contains(&"url".to_string()));
+    }
+
+    #[test]
+    fn accepts_affix_derived_word_forms() {
+        // Regression: the previous engine (zspell 0.5) silently failed to expand
+        // empty-append suffix rules (verb forms like "provoca") and affix
+        // continuation classes (derivations like "activación"), rejecting very
+        // common words that the es_ES dictionary derives from a stem.
+        let checker = SpellChecker::new(Path::new("dictionaries")).expect("dictionary available");
+        for word in [
+            "pingüino",     // standalone stem added by the newer dictionary
+            "provoca",      // provocar + empty-append 3rd-person form
+            "estimula",     // estimular + empty-append 3rd-person form
+            "activación",   // activar + continuation-class derivation
+            "activaciones", // two-level: derivation then plural
+            "colaboración",
+            "asociación",
+        ] {
+            assert!(checker.dict.check(word), "expected '{word}' to be valid");
+        }
+        // Sanity: a clear non-word is still rejected.
+        assert!(!checker.dict.check("asdfghjk"));
     }
 
     #[test]
