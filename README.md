@@ -73,6 +73,38 @@ concecuencia
 <!-- ORTHONAUT:INCORRECTAS:END -->
 ```
 
+### Reloading the word lists from Wikipedia
+
+When running in Wikipedia mode (`wordlist_page` is set), the app reads both word lists from
+that page at startup. To force it to re-read the valid and always-wrong words from Wikipedia
+without restarting, `POST` to `/api/wordlists/reload`. The endpoint re-fetches the page, merges
+in any runtime-added valid words not yet exported, and swaps the live lists in place:
+
+```bash
+curl -X POST https://orthonaut.toolforge.org/api/wordlists/reload
+```
+
+Locally:
+
+```bash
+curl -X POST http://localhost:3000/api/wordlists/reload
+```
+
+It returns the new list sizes, e.g. `{"valid":1234,"wrong":56}`. In local-file mode it
+responds with `400` (`word lists are only reloadable in Wikipedia mode`).
+
+### Stats endpoint
+
+The **Stats** tab is hidden from the UI for now, but the backend endpoint that powers it stays
+available. `GET /api/stats` returns a per-user leaderboard of how many edits each Wikipedia
+account has made through Orthonaut:
+
+```bash
+curl https://orthonaut.toolforge.org/api/stats
+```
+
+It responds with a JSON array, e.g. `[{"username":"Jmlarraz","edit_count":42}, ...]`.
+
 Paths and the port can be overridden with environment variables:
 
 | Variable | Default (debug / release) | Description |

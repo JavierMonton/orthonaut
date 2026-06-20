@@ -405,18 +405,7 @@ function App() {
           >
             Search/Replace
           </a>
-          <a
-            href="#stats"
-            onClick={(event) => {
-              event.preventDefault()
-              setSection('stats')
-            }}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              section === 'stats' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-            }`}
-          >
-            Stats
-          </a>
+          {/* Stats tab is hidden from the UI for now; the `/api/stats` endpoint stays available. */}
         </div>
       </section>
 
