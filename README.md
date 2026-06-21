@@ -1,5 +1,8 @@
 # Orthonaut
 
+- [Live app](https://orthonaut.toolforge.org/)
+- [Documentation](https://es.wikipedia.org/wiki/Usuario:Jmlarraz/Orthonaut)
+
 Orthonaut is a self-hosted full-stack app to check Spanish orthography on Wikipedia pages.
 
 ## Stack
